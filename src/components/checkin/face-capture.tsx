@@ -74,6 +74,7 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
         const faceapi = await import('@vladmandic/face-api');
         if (cancelled) return;
 
+        // @vladmandic/face-api uses .bin model files
         await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
         if (cancelled) return;
 
@@ -84,10 +85,11 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
         if (cancelled) return;
 
         setFaceApiLoaded(true);
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          console.warn('Face-api.js models failed to load, using fallback detection');
+          console.warn('Face-api.js models failed to load, using fallback detection:', err);
           setUseFallback(true);
+          setFaceApiLoaded(false);
         }
       }
     }

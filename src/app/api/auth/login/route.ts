@@ -148,18 +148,28 @@ export async function POST(request: NextRequest) {
       // If student is not activated, they can still log in with the default password
       // to access the activation flow
       if (!student.passwordHash) {
-        return NextResponse.json(
-          { success: false, error: 'Account not set up yet. Please contact admin.' },
-          { status: 403 }
-        );
-      }
-
-      const valid = await verifyPassword(password, student.passwordHash);
-      if (!valid) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid credentials. Default password is CheckIn@2024' },
-          { status: 401 }
-        );
+        // Auto-set default password for imported students who don't have one yet
+        const { hashPassword } = await import('@/lib/auth');
+        const defaultHash = await hashPassword(generateDefaultPassword());
+        await db.student.update({
+          where: { id: student.id },
+          data: { passwordHash: defaultHash },
+        });
+        const valid = await verifyPassword(password, defaultHash);
+        if (!valid) {
+          return NextResponse.json(
+            { success: false, error: 'Invalid credentials. Default password is CheckIn@2024' },
+            { status: 401 }
+          );
+        }
+      } else {
+        const valid = await verifyPassword(password, student.passwordHash);
+        if (!valid) {
+          return NextResponse.json(
+            { success: false, error: 'Invalid credentials. Default password is CheckIn@2024' },
+            { status: 401 }
+          );
+        }
       }
       return NextResponse.json({
         success: true,
