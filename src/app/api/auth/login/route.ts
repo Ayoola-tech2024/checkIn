@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
           where: { matricNumber },
           include: { department: true },
         });
-      } else {
+      } else if (email) {
         student = await db.student.findUnique({
           where: { email },
           include: { department: true },

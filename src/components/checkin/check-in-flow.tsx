@@ -53,20 +53,6 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
 
   const geo = useGeoLocation();
 
-  // Auto-request GPS on mount
-  useEffect(() => {
-    geo.getCurrentPosition().catch(() => {
-      // Error is handled in the hook
-    });
-  }, []);
-
-  // Auto-proceed when GPS obtained
-  useEffect(() => {
-    if (geo.position && !locationResult) {
-      validateLocation(geo.position.latitude, geo.position.longitude);
-    }
-  }, [geo.position, locationResult, validateLocation]);
-
   const validateLocation = useCallback(
     (lat: number, lng: number) => {
       if (!session.lecturerLat || !session.lecturerLng) {
@@ -112,6 +98,20 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
     },
     [session]
   );
+
+  // Auto-request GPS on mount
+  useEffect(() => {
+    geo.getCurrentPosition().catch(() => {
+      // Error is handled in the hook
+    });
+  }, []);
+
+  // Auto-proceed when GPS obtained
+  useEffect(() => {
+    if (geo.position && !locationResult) {
+      validateLocation(geo.position.latitude, geo.position.longitude);
+    }
+  }, [geo.position, locationResult, validateLocation]);
 
   const handleRetryLocation = useCallback(() => {
     setLocationResult(null);
