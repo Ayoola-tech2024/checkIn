@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  students  Student[]
+  courseDepts CourseDepartment[]
+  sessionDepts SessionDepartment[]
+}
+
+model Student {
+  id           String   @id @default(cuid())
+  name         String
+  matricNumber String   @unique
+  departmentId String
+  email        String?
+  passwordHash String?
+  activated    Boolean  @default(false)
+  facialData   String?   // JSON string of facial landmark descriptors
+  selfieData   String?   // Base64 compressed selfie for reference
+  department   Department @relation(fields: [departmentId], references: [id])
+  attendances  Attendance[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Lecturer {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String?
+  courses      Course[]
+  sessions     Session[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  level       String
+  lecturerId  String
+  lecturer    Lecturer @relation(fields: [lecturerId], references: [id])
+  departments CourseDepartment[]
+  sessions    Session[]
+  grading     CourseGrading[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CourseDepartment {
+  id           String     @id @default(cuid())
+  courseId     String
+  departmentId String
+  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, departmentId])
+}
+
+model Venue {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  latitude  Float
+  longitude Float
+  sessions  Session[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Session {
+  id                String   @id @default(cuid())
+  title             String
+  courseId          String
+  venueId           String
+  lecturerId        String
+  level             String
+  distanceThreshold Float    @default(50)
+  durationMinutes   Int      @default(15)
+  scheduledAt       DateTime
+  startedAt         DateTime?
+  endsAt            DateTime?
+  status            String   @default("scheduled") // scheduled, active, completed, cancelled
+  lecturerLat       Float?
+  lecturerLng       Float?
+  course            Course   @relation(fields: [courseId], references: [id])
+  venue             Venue    @relation(fields: [venueId], references: [id])
+  lecturer          Lecturer @relation(fields: [lecturerId], references: [id])
+  departments       SessionDepartment[]
+  attendances       Attendance[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model SessionDepartment {
+  id           String     @id @default(cuid())
+  sessionId    String
+  departmentId String
+  session      Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, departmentId])
+}
+
+model Attendance {
+  id              String    @id @default(cuid())
+  studentId       String
+  sessionId       String
+  status          String    @default("pending") // present, absent, pending_review, rejected_location, rejected_identity
+  similarityScore Float?
+  checkInTime     DateTime?
+  studentLat      Float?
+  studentLng      Float?
+  selfieData      String?
+  student         Student   @relation(fields: [studentId], references: [id])
+  session         Session   @relation(fields: [sessionId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([studentId, sessionId])
+}
+
+model Semester {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  startDate DateTime
+  endDate   DateTime
+  grading   CourseGrading[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CourseGrading {
+  id         String   @id @default(cuid())
+  courseId   String
+  semesterId String
+  totalMarks Float   @default(0)
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  semester   Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, semesterId])
+}
