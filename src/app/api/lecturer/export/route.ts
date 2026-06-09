@@ -28,8 +28,25 @@ export async function GET(request: NextRequest) {
     // Get course_departments
     const { data: courseDepts } = await db
       .from('course_departments')
-      .select('*, departments(*)')
+      .select('*')
       .eq('course_id', courseId);
+
+    // Manually join departments for course_departments
+    const cdDeptIds = (courseDepts || []).map((cd: Record<string, unknown>) => cd.department_id as string).filter(Boolean);
+    const uniqueCdDeptIds = [...new Set(cdDeptIds)];
+    let cdDeptMap = new Map<string, Record<string, unknown>>();
+    if (uniqueCdDeptIds.length > 0) {
+      const { data: cdDepts } = await db.from('departments').select('*').in('id', uniqueCdDeptIds);
+      for (const d of cdDepts || []) {
+        cdDeptMap.set((d as Record<string, unknown>).id as string, d as Record<string, unknown>);
+      }
+    }
+
+    // Enrich courseDepts with department data
+    const courseDeptsEnriched = (courseDepts || []).map((cd: Record<string, unknown>) => ({
+      ...cd,
+      departments: cdDeptMap.get(cd.department_id as string) || null,
+    })) as Record<string, unknown>[];
 
     // Get department IDs
     const deptIds = (courseDepts || []).map((cd: Record<string, unknown>) => cd.department_id as string);
@@ -39,10 +56,25 @@ export async function GET(request: NextRequest) {
     if (deptIds.length > 0) {
       const { data: studentsData } = await db
         .from('students')
-        .select('*, departments(*)')
+        .select('*')
         .in('department_id', deptIds)
         .order('matric_number', { ascending: true });
-      students = (studentsData || []) as Record<string, unknown>[];
+
+      // Manually join departments for students
+      const sDeptIds = (studentsData || []).map((s: Record<string, unknown>) => s.department_id as string).filter(Boolean);
+      const uniqueSDeptIds = [...new Set(sDeptIds)];
+      let sDeptMap = new Map<string, Record<string, unknown>>();
+      if (uniqueSDeptIds.length > 0) {
+        const { data: sDepts } = await db.from('departments').select('*').in('id', uniqueSDeptIds);
+        for (const d of sDepts || []) {
+          sDeptMap.set((d as Record<string, unknown>).id as string, d as Record<string, unknown>);
+        }
+      }
+
+      students = (studentsData || []).map((s: Record<string, unknown>) => ({
+        ...s,
+        departments: sDeptMap.get(s.department_id as string) || null,
+      })) as Record<string, unknown>[];
     }
 
     // Get sessions for this course, optionally filtered by semester
@@ -80,7 +112,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Group students by department
-    const departments = (courseDepts || []).map((cd: Record<string, unknown>) => {
+    const departments = courseDeptsEnriched.map((cd: Record<string, unknown>) => {
       const dept = cd.departments as Record<string, unknown>;
       const deptStudents = students.filter(
         (s: Record<string, unknown>) => s.department_id === cd.department_id

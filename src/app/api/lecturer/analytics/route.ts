@@ -39,16 +39,44 @@ export async function GET(request: NextRequest) {
       db.from('courses').select('id, name, code').eq('id', session.course_id as string),
       db.from('venues').select('id, name').eq('id', session.venue_id as string),
       db.from('lecturers').select('id, name').eq('id', session.lecturer_id as string),
-      db.from('session_departments').select('*, departments(id, name, code)').eq('session_id', sessionId),
-      db.from('attendances').select('*, students(id, name, matric_number, department_id)').eq('session_id', sessionId),
+      db.from('session_departments').select('*').eq('session_id', sessionId),
+      db.from('attendances').select('*').eq('session_id', sessionId),
     ]);
+
+    // Manually join departments for session_departments
+    const sdDeptIds = (sessionDeptsResult.data || []).map((d: Record<string, unknown>) => d.department_id as string).filter(Boolean);
+    const uniqueSdDeptIds = [...new Set(sdDeptIds)];
+    let sdDeptMap = new Map<string, Record<string, unknown>>();
+    if (uniqueSdDeptIds.length > 0) {
+      const { data: sdDepts } = await db.from('departments').select('id, name, code').in('id', uniqueSdDeptIds);
+      for (const d of sdDepts || []) {
+        sdDeptMap.set((d as Record<string, unknown>).id as string, d as Record<string, unknown>);
+      }
+    }
+
+    // Manually join students for attendances
+    const attStudentIds = (attendancesResult.data || []).map((a: Record<string, unknown>) => a.student_id as string).filter(Boolean);
+    const uniqueAttStudentIds = [...new Set(attStudentIds)];
+    let attStudentMap = new Map<string, Record<string, unknown>>();
+    if (uniqueAttStudentIds.length > 0) {
+      const { data: attStudents } = await db.from('students').select('id, name, matric_number, department_id').in('id', uniqueAttStudentIds);
+      for (const s of attStudents || []) {
+        attStudentMap.set((s as Record<string, unknown>).id as string, s as Record<string, unknown>);
+      }
+    }
 
     const course = courseResult.data?.[0] as Record<string, unknown> | undefined;
     const venue = venueResult.data?.[0] as Record<string, unknown> | undefined;
     const lecturer = lecturerResult.data?.[0] as Record<string, unknown> | undefined;
 
-    const deptLinks = (sessionDeptsResult.data || []) as Record<string, unknown>[];
-    const attendances = (attendancesResult.data || []) as Record<string, unknown>[];
+    const deptLinks = (sessionDeptsResult.data || []).map((d: Record<string, unknown>) => ({
+      ...d,
+      departments: sdDeptMap.get(d.department_id as string) || null,
+    })) as Record<string, unknown>[];
+    const attendances = (attendancesResult.data || []).map((a: Record<string, unknown>) => ({
+      ...a,
+      students: attStudentMap.get(a.student_id as string) || null,
+    })) as Record<string, unknown>[];
 
     // Get department IDs for counting target students
     const deptIds = deptLinks.map((d: Record<string, unknown>) => {

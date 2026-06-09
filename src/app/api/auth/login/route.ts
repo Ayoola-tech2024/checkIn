@@ -60,7 +60,9 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      const { data: lecturers, error } = await db.from('lecturers').select('*, courses:courses(*)').eq('email', email);
+
+      // Fetch lecturer without nested resources
+      const { data: lecturers, error } = await db.from('lecturers').select('*').eq('email', email);
       if (error || !lecturers || lecturers.length === 0) {
         return NextResponse.json(
           { success: false, error: 'Invalid credentials' },
@@ -69,12 +71,11 @@ export async function POST(request: NextRequest) {
       }
       const lecturer = lecturers[0] as Record<string, unknown>;
 
-      // If lecturer has no password yet, set the default password on first login
+      // Handle password
       if (!lecturer.password_hash) {
         const { hashPassword } = await import('@/lib/auth');
         const defaultHash = await hashPassword(generateDefaultPassword());
         await db.from('lecturers').update({ password_hash: defaultHash }).eq('id', lecturer.id as string);
-        // Verify with the default password
         const valid = await verifyPassword(password, defaultHash);
         if (!valid) {
           return NextResponse.json(
@@ -92,27 +93,42 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Fetch course_departments with department info for each course
-      const lecturerCourses = (lecturer.courses as Record<string, unknown>[]) || [];
+      // Manually fetch courses for this lecturer
+      const { data: lecturerCourses } = await db
+        .from('courses')
+        .select('*')
+        .eq('lecturer_id', lecturer.id as string);
+
+      // For each course, manually fetch its departments
       const coursesWithDepts = await Promise.all(
-        lecturerCourses.map(async (c) => {
+        (lecturerCourses || []).map(async (c: Record<string, unknown>) => {
           const { data: courseDepts } = await db
             .from('course_departments')
-            .select('*, departments(*)')
+            .select('department_id')
             .eq('course_id', c.id as string);
+
+          const deptIds = (courseDepts || []).map((cd: Record<string, unknown>) => cd.department_id as string);
+
+          let departments: { id: string; name: string; code: string }[] = [];
+          if (deptIds.length > 0) {
+            const { data: deptData } = await db
+              .from('departments')
+              .select('id, name, code')
+              .in('id', deptIds);
+            departments = (deptData || []).map((d: Record<string, unknown>) => ({
+              id: d.id as string,
+              name: d.name as string,
+              code: d.code as string,
+            }));
+          }
+
           return {
-            id: c.id,
-            name: c.name,
-            code: c.code,
-            level: c.level,
-            departments: (courseDepts || []).map((cd: Record<string, unknown>) => {
-              const dept = cd.departments as Record<string, unknown>;
-              return {
-                id: dept?.id,
-                name: dept?.name,
-                code: dept?.code,
-              };
-            }),
+            id: c.id as string,
+            name: c.name as string,
+            code: c.code as string,
+            level: (c.level as string) || '',
+            lecturerId: c.lecturer_id as string,
+            departments,
           };
         })
       );
@@ -130,7 +146,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (role === 'student') {
-      // Students can log in with either email or matricNumber
       if (!email && !matricNumber) {
         return NextResponse.json(
           { success: false, error: 'Email or Matric Number is required' },
@@ -139,31 +154,32 @@ export async function POST(request: NextRequest) {
       }
 
       let student: Record<string, unknown> | null = null;
+
       if (matricNumber) {
         const { data: students } = await db
           .from('students')
-          .select('*, departments(*)')
+          .select('*')
           .eq('matric_number', matricNumber);
         student = (students?.[0] as Record<string, unknown>) || null;
-      } else if (email) {
+      }
+
+      if (!student && email) {
         const { data: students } = await db
           .from('students')
-          .select('*, departments(*)')
+          .select('*')
           .eq('email', email);
         student = (students?.[0] as Record<string, unknown>) || null;
       }
 
       if (!student) {
         return NextResponse.json(
-          { success: false, error: 'Invalid credentials' },
+          { success: false, error: 'Invalid credentials. Student not found.' },
           { status: 401 }
         );
       }
 
-      // If student is not activated, they can still log in with the default password
-      // to access the activation flow
+      // Handle password
       if (!student.password_hash) {
-        // Auto-set default password for imported students who don't have one yet
         const { hashPassword } = await import('@/lib/auth');
         const defaultHash = await hashPassword(generateDefaultPassword());
         await db.from('students').update({ password_hash: defaultHash }).eq('id', student.id as string);
@@ -184,7 +200,15 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const department = student.departments as Record<string, unknown> | null;
+      // Manually fetch department
+      let departmentName: string | undefined;
+      if (student.department_id) {
+        const { data: depts } = await db
+          .from('departments')
+          .select('name')
+          .eq('id', student.department_id as string);
+        departmentName = (depts?.[0] as Record<string, unknown>)?.name as string | undefined;
+      }
 
       return NextResponse.json({
         success: true,
@@ -195,7 +219,7 @@ export async function POST(request: NextRequest) {
           role: 'student',
           matricNumber: student.matric_number,
           departmentId: student.department_id,
-          departmentName: department?.name,
+          departmentName,
           activated: student.activated,
         },
       });

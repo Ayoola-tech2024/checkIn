@@ -108,8 +108,7 @@ export function LoginScreen() {
       const data = await res.json();
 
       if (!data.success) {
-        // If admin login fails with 401 and the message says invalid credentials,
-        // it might be that no admin exists yet — offer to create one
+        // If admin login fails with invalid credentials, offer to create one
         if (
           selectedRole === 'admin' &&
           res.status === 401 &&
@@ -251,7 +250,7 @@ export function LoginScreen() {
                 className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-2 w-fit"
               >
                 <ArrowLeft className="size-4" />
-                Back
+                Back to role selection
               </button>
               <CardTitle className="flex items-center gap-2">
                 {ROLES.find((r) => r.role === selectedRole)?.icon &&
@@ -328,6 +327,15 @@ export function LoginScreen() {
                     <p className="text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
                       <GraduationCap className="size-4 mt-0.5 shrink-0" />
                       Use your Matric Number with default password (CheckIn@2024) to log in and activate your account.
+                    </p>
+                  </div>
+                )}
+
+                {selectedRole === 'lecturer' && (
+                  <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30 p-3">
+                    <p className="text-sm text-sky-800 dark:text-sky-200 flex items-start gap-2">
+                      <BookOpen className="size-4 mt-0.5 shrink-0" />
+                      Use your email with default password (CheckIn@2024) to log in.
                     </p>
                   </div>
                 )}

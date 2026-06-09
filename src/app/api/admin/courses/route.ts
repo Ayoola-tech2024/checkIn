@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const { data: courses, error } = await db
       .from('courses')
-      .select('*, lecturers(id, name, email)')
+      .select('*')
       .order('name', { ascending: true });
 
     if (error) {
@@ -15,24 +15,59 @@ export async function GET() {
       );
     }
 
-    // Fetch course_departments for all courses
-    const courseIds = (courses || []).map((c: Record<string, unknown>) => c.id);
+    if (!courses || courses.length === 0) {
+      return NextResponse.json({ success: true, data: [] });
+    }
+
+    // Manually fetch lecturers for all courses
+    const lecturerIds = [...new Set(courses.map((c: Record<string, unknown>) => c.lecturer_id as string).filter(Boolean))];
+    const lecturerMap = new Map<string, Record<string, unknown>>();
+
+    if (lecturerIds.length > 0) {
+      const { data: lecturers } = await db
+        .from('lecturers')
+        .select('id, name, email')
+        .in('id', lecturerIds);
+      for (const l of lecturers || []) {
+        lecturerMap.set((l as Record<string, unknown>).id as string, l as Record<string, unknown>);
+      }
+    }
+
+    // Manually fetch course_departments
+    const courseIds = courses.map((c: Record<string, unknown>) => c.id as string);
     const { data: courseDepts } = await db
       .from('course_departments')
-      .select('*, departments(id, name, code)')
+      .select('*')
       .in('course_id', courseIds.length > 0 ? courseIds : ['__none__']);
 
-    const courseDeptMap = new Map<string, Record<string, unknown>[]>();
+    // Fetch department details
+    const deptIds = [...new Set((courseDepts || []).map((cd: Record<string, unknown>) => cd.department_id as string).filter(Boolean))];
+    const deptMap = new Map<string, Record<string, unknown>>();
+
+    if (deptIds.length > 0) {
+      const { data: depts } = await db
+        .from('departments')
+        .select('id, name, code')
+        .in('id', deptIds);
+      for (const d of depts || []) {
+        deptMap.set((d as Record<string, unknown>).id as string, d as Record<string, unknown>);
+      }
+    }
+
+    // Group departments by course
+    const courseDeptMap = new Map<string, string[]>();
     for (const cd of courseDepts || []) {
       const rec = cd as Record<string, unknown>;
       const cid = rec.course_id as string;
+      const did = rec.department_id as string;
       if (!courseDeptMap.has(cid)) courseDeptMap.set(cid, []);
-      courseDeptMap.get(cid)!.push(rec);
+      courseDeptMap.get(cid)!.push(did);
     }
 
-    const data = (courses || []).map((c: Record<string, unknown>) => {
-      const lecturer = c.lecturers as Record<string, unknown> | null;
-      const depts = courseDeptMap.get(c.id as string) || [];
+    const data = courses.map((c: Record<string, unknown>) => {
+      const lecturer = lecturerMap.get(c.lecturer_id as string);
+      const deptIdsForCourse = courseDeptMap.get(c.id as string) || [];
+
       return {
         id: c.id,
         name: c.name,
@@ -40,10 +75,10 @@ export async function GET() {
         level: c.level,
         lecturerId: c.lecturer_id,
         lecturerName: lecturer?.name,
-        departments: depts.map((cd: Record<string, unknown>) => {
-          const dept = cd.departments as Record<string, unknown>;
+        departments: deptIdsForCourse.map((did) => {
+          const dept = deptMap.get(did);
           return {
-            id: dept?.id,
+            id: did,
             name: dept?.name,
             code: dept?.code,
           };
@@ -102,6 +137,7 @@ export async function POST(request: NextRequest) {
       .select();
 
     if (courseError || !courses || courses.length === 0) {
+      console.error('Course creation error:', courseError);
       return NextResponse.json(
         { success: false, error: 'Failed to create course' },
         { status: 500 }
@@ -111,12 +147,13 @@ export async function POST(request: NextRequest) {
     const course = courses[0] as Record<string, unknown>;
 
     // Create course_department links
-    const courseDeptInserts = departmentIds.map((departmentId: string) => ({
-      course_id: course.id,
-      department_id: departmentId,
-    }));
-
-    await db.from('course_departments').insert(courseDeptInserts);
+    if (departmentIds.length > 0) {
+      const courseDeptInserts = departmentIds.map((departmentId: string) => ({
+        course_id: course.id,
+        department_id: departmentId,
+      }));
+      await db.from('course_departments').insert(courseDeptInserts);
+    }
 
     // Fetch lecturer info
     const { data: lecturerData } = await db

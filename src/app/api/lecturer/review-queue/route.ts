@@ -48,17 +48,46 @@ export async function GET(request: NextRequest) {
     const studentIds = [...new Set(pendingReviews.map((a: Record<string, unknown>) => a.student_id as string))];
     const reviewSessionIds = [...new Set(pendingReviews.map((a: Record<string, unknown>) => a.session_id as string))];
 
-    // Fetch related data in parallel
+    // Fetch related data in parallel (no nested embedding)
     const [studentsResult, sessionDetailsResult] = await Promise.all([
-      db.from('students').select('*, departments(id, name)').in('id', studentIds),
-      db.from('sessions').select('*, courses(id, name, code), venues(name)').in('id', reviewSessionIds),
+      db.from('students').select('*').in('id', studentIds),
+      db.from('sessions').select('*').in('id', reviewSessionIds),
     ]);
 
+    // Manually join departments for students
+    const studentDeptIds = (studentsResult.data || []).map((s: Record<string, unknown>) => s.department_id as string).filter(Boolean);
+    const uniqueStudentDeptIds = [...new Set(studentDeptIds)];
+    let studentDeptMap = new Map<string, Record<string, unknown>>();
+    if (uniqueStudentDeptIds.length > 0) {
+      const { data: studentDepts } = await db.from('departments').select('id, name').in('id', uniqueStudentDeptIds);
+      for (const d of studentDepts || []) {
+        studentDeptMap.set((d as Record<string, unknown>).id as string, d as Record<string, unknown>);
+      }
+    }
+
+    // Manually join courses and venues for sessions
+    const sessionCourseIds = (sessionDetailsResult.data || []).map((s: Record<string, unknown>) => s.course_id as string).filter(Boolean);
+    const sessionVenueIds = (sessionDetailsResult.data || []).map((s: Record<string, unknown>) => s.venue_id as string).filter(Boolean);
+    const uniqueCourseIds = [...new Set(sessionCourseIds)];
+    const uniqueVenueIds = [...new Set(sessionVenueIds)];
+    let courseMap = new Map<string, Record<string, unknown>>();
+    let venueMap = new Map<string, Record<string, unknown>>();
+    const [courseResult, venueResult] = await Promise.all([
+      uniqueCourseIds.length > 0 ? db.from('courses').select('id, name, code').in('id', uniqueCourseIds) : Promise.resolve({ data: [] }),
+      uniqueVenueIds.length > 0 ? db.from('venues').select('id, name').in('id', uniqueVenueIds) : Promise.resolve({ data: [] }),
+    ]);
+    for (const c of courseResult.data || []) {
+      courseMap.set((c as Record<string, unknown>).id as string, c as Record<string, unknown>);
+    }
+    for (const v of venueResult.data || []) {
+      venueMap.set((v as Record<string, unknown>).id as string, v as Record<string, unknown>);
+    }
+
     const studentMap = new Map(
-      (studentsResult.data || []).map((s: Record<string, unknown>) => [s.id, s])
+      (studentsResult.data || []).map((s: Record<string, unknown>) => [s.id, { ...s, departments: studentDeptMap.get(s.department_id as string) || null }])
     );
     const sessionMap = new Map(
-      (sessionDetailsResult.data || []).map((s: Record<string, unknown>) => [s.id, s])
+      (sessionDetailsResult.data || []).map((s: Record<string, unknown>) => [s.id, { ...s, courses: courseMap.get(s.course_id as string) || null, venues: venueMap.get(s.venue_id as string) || null }])
     );
 
     const data = pendingReviews.map((a: Record<string, unknown>) => {

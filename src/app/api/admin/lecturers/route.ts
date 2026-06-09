@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const { data: lecturers, error } = await db
       .from('lecturers')
-      .select('*, courses:courses(id, name, code, level)')
+      .select('*')
       .order('name', { ascending: true });
 
     if (error) {
@@ -15,11 +15,34 @@ export async function GET() {
       );
     }
 
+    // Manually fetch courses for all lecturers
+    const lecturerIds = (lecturers || []).map((l: Record<string, unknown>) => l.id as string);
+
+    let coursesByLecturer = new Map<string, Record<string, unknown>[]>();
+    if (lecturerIds.length > 0) {
+      const { data: allCourses } = await db
+        .from('courses')
+        .select('*')
+        .in('lecturer_id', lecturerIds);
+
+      for (const c of allCourses || []) {
+        const rec = c as Record<string, unknown>;
+        const lid = rec.lecturer_id as string;
+        if (!coursesByLecturer.has(lid)) coursesByLecturer.set(lid, []);
+        coursesByLecturer.get(lid)!.push(rec);
+      }
+    }
+
     const data = (lecturers || []).map((l: Record<string, unknown>) => ({
       id: l.id,
       name: l.name,
       email: l.email,
-      courses: l.courses || [],
+      courses: (coursesByLecturer.get(l.id as string) || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        level: c.level,
+      })),
     }));
 
     return NextResponse.json({ success: true, data });

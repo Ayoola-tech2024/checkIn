@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     const { data: students, error } = await db
       .from('students')
-      .select('*, departments(*)')
+      .select('*')
       .eq('id', studentId);
 
     if (error || !students || students.length === 0) {
@@ -26,7 +26,13 @@ export async function GET(request: NextRequest) {
     }
 
     const student = students[0] as Record<string, unknown>;
-    const department = student.departments as Record<string, unknown> | null;
+
+    // Manually join department for student
+    let department: Record<string, unknown> | null = null;
+    if (student.department_id) {
+      const { data: depts } = await db.from('departments').select('*').eq('id', student.department_id as string);
+      department = (depts?.[0] as Record<string, unknown>) || null;
+    }
 
     return NextResponse.json({
       success: true,

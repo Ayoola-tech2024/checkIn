@@ -31,13 +31,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: [] });
     }
 
-    const sessionIds = sessions.map((s: Record<string, unknown>) => s.id);
+    const sessionIds = sessions.map((s: Record<string, unknown>) => s.id as string);
 
-    // Fetch related data in parallel
+    // Fetch related data in parallel using manual joins
+    const courseIds = [...new Set(sessions.map((s: Record<string, unknown>) => s.course_id as string).filter(Boolean))];
+    const venueIds = [...new Set(sessions.map((s: Record<string, unknown>) => s.venue_id as string).filter(Boolean))];
+
     const [coursesResult, venuesResult, sessionDeptsResult, attendancesResult] = await Promise.all([
-      db.from('courses').select('id, name, code, level').in('id', sessions.map((s: Record<string, unknown>) => s.course_id).filter(Boolean)),
-      db.from('venues').select('id, name').in('id', sessions.map((s: Record<string, unknown>) => s.venue_id).filter(Boolean)),
-      db.from('session_departments').select('*, departments(id, name, code)').in('session_id', sessionIds),
+      courseIds.length > 0 ? db.from('courses').select('id, name, code, level').in('id', courseIds) : { data: [] },
+      venueIds.length > 0 ? db.from('venues').select('id, name').in('id', venueIds) : { data: [] },
+      db.from('session_departments').select('*').in('session_id', sessionIds),
       db.from('attendances').select('id, session_id, status').in('session_id', sessionIds),
     ]);
 
@@ -47,6 +50,20 @@ export async function GET(request: NextRequest) {
     const venueMap = new Map(
       (venuesResult.data || []).map((v: Record<string, unknown>) => [v.id, v])
     );
+
+    // Fetch department details for session_departments
+    const deptIds = [...new Set((sessionDeptsResult.data || []).map((sd: Record<string, unknown>) => sd.department_id as string).filter(Boolean))];
+    const deptMap = new Map<string, Record<string, unknown>>();
+
+    if (deptIds.length > 0) {
+      const { data: depts } = await db
+        .from('departments')
+        .select('id, name, code')
+        .in('id', deptIds);
+      for (const d of depts || []) {
+        deptMap.set((d as Record<string, unknown>).id as string, d as Record<string, unknown>);
+      }
+    }
 
     // Build session_departments map
     const sessionDeptMap = new Map<string, Record<string, unknown>[]>();
@@ -74,17 +91,14 @@ export async function GET(request: NextRequest) {
     const data = await Promise.all(
       sessions.map(async (session: Record<string, unknown>) => {
         const deptLinks = sessionDeptMap.get(session.id as string) || [];
-        const deptIds = deptLinks.map((d: Record<string, unknown>) => {
-          const dept = d.departments as Record<string, unknown>;
-          return dept?.id || (d.department_id as string);
-        });
+        const deptIdsForSession = deptLinks.map((d: Record<string, unknown>) => d.department_id as string);
 
         let totalTargetStudents = 0;
-        if (deptIds.length > 0) {
+        if (deptIdsForSession.length > 0) {
           const { data: targetStudents } = await db
             .from('students')
             .select('id')
-            .in('department_id', deptIds);
+            .in('department_id', deptIdsForSession);
           totalTargetStudents = targetStudents?.length || 0;
         }
 
@@ -110,11 +124,11 @@ export async function GET(request: NextRequest) {
           lecturerLat: session.lecturer_lat,
           lecturerLng: session.lecturer_lng,
           departments: deptLinks.map((d: Record<string, unknown>) => {
-            const dept = d.departments as Record<string, unknown>;
+            const dept = deptMap.get(d.department_id as string);
             return {
-              id: dept?.id,
-              name: dept?.name,
-              code: dept?.code,
+              id: d.department_id as string,
+              name: dept?.name || '',
+              code: dept?.code || '',
             };
           }),
           attendanceCounts: attendanceCountMap.get(session.id as string) || {},
@@ -164,23 +178,24 @@ export async function POST(request: NextRequest) {
     const { data: venueSessions } = await db
       .from('sessions')
       .select('*')
-      .eq('venue_id', venueId)
-      .or('status.eq.scheduled,status.eq.active');
+      .eq('venue_id', venueId);
 
-    // Filter for actual time overlap
+    // Filter for actual time overlap with scheduled or active sessions
     const venueConflicts = (venueSessions || []).filter((s: Record<string, unknown>) => {
+      if (s.status !== 'scheduled' && s.status !== 'active') return false;
       const existingStart = new Date(s.scheduled_at as string);
       const existingEnd = new Date(existingStart.getTime() + (s.duration_minutes as number) * 60000);
       return existingEnd > scheduledDate && existingStart < sessionEnd;
     });
 
     if (venueConflicts.length > 0) {
-      // Fetch course names for conflicts
-      const conflictCourseIds = venueConflicts.map((s: Record<string, unknown>) => s.course_id as string);
-      const { data: conflictCourses } = await db.from('courses').select('id, name, code').in('id', conflictCourseIds);
+      const conflictCourseIds = venueConflicts.map((s: Record<string, unknown>) => s.course_id as string).filter(Boolean);
+      const conflictCourses = conflictCourseIds.length > 0
+        ? await db.from('courses').select('id, name, code').in('id', conflictCourseIds)
+        : { data: [] };
 
       const courseMap = new Map(
-        (conflictCourses || []).map((c: Record<string, unknown>) => [c.id, c])
+        (conflictCourses.data || []).map((c: Record<string, unknown>) => [c.id, c])
       );
 
       return NextResponse.json(
@@ -207,41 +222,61 @@ export async function POST(request: NextRequest) {
     // ===== VALIDATION: Department concurrency guardrail =====
     const { data: deptSessionLinks } = await db
       .from('session_departments')
-      .select('*, sessions(*), departments(name)')
+      .select('*')
       .in('department_id', departmentIds);
 
-    // Filter for sessions that are scheduled or active and overlap
+    // Filter for sessions that overlap
+    const deptConflictSessionIds = [...new Set(
+      (deptSessionLinks || []).map((dsl: Record<string, unknown>) => dsl.session_id as string).filter(Boolean)
+    )];
+
     const deptConflicts: Record<string, unknown>[] = [];
     const seenSessionIds = new Set<string>();
 
-    for (const dsl of deptSessionLinks || []) {
-      const rec = dsl as Record<string, unknown>;
-      const session = rec.sessions as Record<string, unknown>;
-      if (!session) continue;
-      if (session.status !== 'scheduled' && session.status !== 'active') continue;
-      if (seenSessionIds.has(session.id as string)) continue;
+    if (deptConflictSessionIds.length > 0) {
+      const { data: conflictSessions } = await db
+        .from('sessions')
+        .select('*')
+        .in('id', deptConflictSessionIds);
 
-      const existingStart = new Date(session.scheduled_at as string);
-      const existingEnd = new Date(existingStart.getTime() + (session.duration_minutes as number) * 60000);
-      if (existingEnd > scheduledDate && existingStart < sessionEnd) {
-        seenSessionIds.add(session.id as string);
-        deptConflicts.push(rec);
+      for (const session of conflictSessions || []) {
+        const s = session as Record<string, unknown>;
+        if (s.status !== 'scheduled' && s.status !== 'active') continue;
+        if (seenSessionIds.has(s.id as string)) continue;
+
+        const existingStart = new Date(s.scheduled_at as string);
+        const existingEnd = new Date(existingStart.getTime() + (s.duration_minutes as number) * 60000);
+        if (existingEnd > scheduledDate && existingStart < sessionEnd) {
+          seenSessionIds.add(s.id as string);
+          deptConflicts.push(s);
+        }
       }
     }
 
     if (deptConflicts.length > 0) {
-      // Fetch course info for conflict sessions
-      const conflictSessionIds = deptConflicts.map((sd: Record<string, unknown>) => (sd.sessions as Record<string, unknown>)?.id).filter(Boolean) as string[];
-      const { data: conflictCourses } = await db.from('courses').select('id, name, code').in('id', deptConflicts.map((sd: Record<string, unknown>) => ((sd.sessions as Record<string, unknown>)?.course_id)).filter(Boolean));
+      const conflictCourseIds = deptConflicts.map((s: Record<string, unknown>) => s.course_id as string).filter(Boolean);
+      const conflictCourses = conflictCourseIds.length > 0
+        ? await db.from('courses').select('id, name, code').in('id', conflictCourseIds)
+        : { data: [] };
 
       // Get all session_departments for conflict sessions
-      const { data: conflictSessionDepts } = await db
-        .from('session_departments')
-        .select('*, departments(name)')
-        .in('session_id', conflictSessionIds);
+      const conflictSessionIds = deptConflicts.map((s: Record<string, unknown>) => s.id as string);
+      const { data: conflictSessionDepts } = conflictSessionIds.length > 0
+        ? await db.from('session_departments').select('*').in('session_id', conflictSessionIds)
+        : { data: [] };
+
+      // Fetch department names
+      const conflictDeptIds = [...new Set((conflictSessionDepts || []).map((csd: Record<string, unknown>) => csd.department_id as string).filter(Boolean))];
+      const conflictDeptMap = new Map<string, string>();
+      if (conflictDeptIds.length > 0) {
+        const { data: conflictDepts } = await db.from('departments').select('id, name').in('id', conflictDeptIds);
+        for (const d of conflictDepts || []) {
+          conflictDeptMap.set((d as Record<string, unknown>).id as string, (d as Record<string, unknown>).name as string);
+        }
+      }
 
       const courseMap = new Map(
-        (conflictCourses || []).map((c: Record<string, unknown>) => [c.id, c])
+        (conflictCourses.data || []).map((c: Record<string, unknown>) => [c.id, c])
       );
 
       return NextResponse.json(
@@ -249,20 +284,19 @@ export async function POST(request: NextRequest) {
           success: false,
           error: 'One or more departments are already booked for the requested time window',
           data: {
-            conflicts: deptConflicts.map((sd: Record<string, unknown>) => {
-              const session = sd.sessions as Record<string, unknown>;
-              const course = courseMap.get(session?.course_id as string) as Record<string, unknown> | undefined;
-              // Find conflicting department names
+            conflicts: deptConflicts.map((s) => {
+              const session = s as Record<string, unknown>;
+              const course = courseMap.get(session.course_id as string) as Record<string, unknown> | undefined;
               const conflictingDepts = (conflictSessionDepts || [])
-                .filter((csd: Record<string, unknown>) => csd.session_id === session?.id && departmentIds.includes(csd.department_id))
-                .map((csd: Record<string, unknown>) => (csd.departments as Record<string, unknown>)?.name);
+                .filter((csd: Record<string, unknown>) => csd.session_id === session.id && departmentIds.includes(csd.department_id))
+                .map((csd: Record<string, unknown>) => conflictDeptMap.get(csd.department_id as string) || 'Unknown');
 
               return {
-                id: session?.id,
-                title: session?.title,
+                id: session.id,
+                title: session.title,
                 courseName: course?.name,
-                scheduledAt: session?.scheduled_at,
-                durationMinutes: session?.duration_minutes,
+                scheduledAt: session.scheduled_at,
+                durationMinutes: session.duration_minutes,
                 conflictingDepartments: conflictingDepts,
               };
             }),
@@ -288,6 +322,7 @@ export async function POST(request: NextRequest) {
       .select();
 
     if (sessionError || !sessions || sessions.length === 0) {
+      console.error('Session creation error:', sessionError);
       return NextResponse.json(
         { success: false, error: 'Failed to create session' },
         { status: 500 }
@@ -297,23 +332,22 @@ export async function POST(request: NextRequest) {
     const session = sessions[0] as Record<string, unknown>;
 
     // Create session_department links
-    const sessionDeptInserts = departmentIds.map((departmentId: string) => ({
-      session_id: session.id,
-      department_id: departmentId,
-    }));
-
-    await db.from('session_departments').insert(sessionDeptInserts);
+    if (departmentIds.length > 0) {
+      const sessionDeptInserts = departmentIds.map((departmentId: string) => ({
+        session_id: session.id,
+        department_id: departmentId,
+      }));
+      await db.from('session_departments').insert(sessionDeptInserts);
+    }
 
     // Fetch related data for response
-    const [courseResult, venueResult, lecturerResult] = await Promise.all([
+    const [courseResult, venueResult] = await Promise.all([
       db.from('courses').select('id, name, code').eq('id', courseId),
       db.from('venues').select('id, name').eq('id', venueId),
-      db.from('lecturers').select('id, name').eq('id', lecturerId),
     ]);
 
     const course = courseResult.data?.[0] as Record<string, unknown> | undefined;
     const venue = venueResult.data?.[0] as Record<string, unknown> | undefined;
-    const lecturer = lecturerResult.data?.[0] as Record<string, unknown> | undefined;
 
     // Fetch departments for the session
     const { data: deptData } = await db
@@ -332,7 +366,6 @@ export async function POST(request: NextRequest) {
         venueId: session.venue_id,
         venueName: venue?.name,
         lecturerId: session.lecturer_id,
-        lecturerName: lecturer?.name,
         level: session.level,
         distanceThreshold: session.distance_threshold,
         durationMinutes: session.duration_minutes,

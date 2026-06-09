@@ -34,11 +34,22 @@ export async function GET(request: NextRequest) {
     const courseIds = courses.map((c: Record<string, unknown>) => c.id as string);
 
     // Fetch gradings for these courses
-    let gradingQuery = db.from('course_gradings').select('*, semesters(id, name)').in('course_id', courseIds);
+    let gradingQuery = db.from('course_gradings').select('*').in('course_id', courseIds);
     if (semesterId) {
       gradingQuery = gradingQuery.eq('semester_id', semesterId);
     }
     const { data: gradings } = await gradingQuery;
+
+    // Manually join semesters for gradings
+    const gradingSemesterIds = (gradings || []).map((g: Record<string, unknown>) => g.semester_id as string).filter(Boolean);
+    const uniqueGradingSemesterIds = [...new Set(gradingSemesterIds)];
+    let semesterMap = new Map<string, Record<string, unknown>>();
+    if (uniqueGradingSemesterIds.length > 0) {
+      const { data: semestersData } = await db.from('semesters').select('id, name').in('id', uniqueGradingSemesterIds);
+      for (const s of semestersData || []) {
+        semesterMap.set((s as Record<string, unknown>).id as string, s as Record<string, unknown>);
+      }
+    }
 
     // Build grading map by course_id
     const gradingMap = new Map<string, Record<string, unknown>[]>();
@@ -55,7 +66,7 @@ export async function GET(request: NextRequest) {
       courseCode: course.code,
       level: course.level,
       grading: (gradingMap.get(course.id as string) || []).map((g: Record<string, unknown>) => {
-        const semester = g.semesters as Record<string, unknown> | null;
+        const semester = semesterMap.get(g.semester_id as string) || null;
         return {
           id: g.id,
           courseId: g.course_id,

@@ -2,7 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -12,6 +11,7 @@ const nextConfig: NextConfig = {
     "http://21.0.11.32:3000",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://preview-chat-e4af0c47-5c37-4365-98cf-7b7c08f61c4c.space-z.ai",
   ],
 };
 

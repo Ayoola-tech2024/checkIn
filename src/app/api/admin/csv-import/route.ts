@@ -22,6 +22,17 @@ export async function POST(request: NextRequest) {
     let skipped = 0;
     let errors: string[] = [];
 
+    // Pre-fetch all departments to minimize API calls
+    const { data: allDepts } = await db.from('departments').select('*');
+    const deptMap = new Map<string, Record<string, unknown>>();
+    for (const d of allDepts || []) {
+      const dept = d as Record<string, unknown>;
+      deptMap.set((dept.name as string).toLowerCase(), dept);
+      if (dept.code) {
+        deptMap.set((dept.code as string).toLowerCase(), dept);
+      }
+    }
+
     for (const row of students) {
       try {
         if (!row.name || !row.matricNumber || !row.department) {
@@ -31,15 +42,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Find or create department
-        const { data: existingDepts } = await db
-          .from('departments')
-          .select('*')
-          .or(`name.eq."${row.department}",code.eq."${row.department}"`);
-
-        let department: Record<string, unknown> | null = null;
-        if (existingDepts && existingDepts.length > 0) {
-          department = existingDepts[0] as Record<string, unknown>;
-        }
+        let department = deptMap.get(row.department.toLowerCase());
 
         if (!department) {
           const code = row.department.substring(0, 4).toUpperCase().replace(/\s/g, '');
@@ -48,6 +51,13 @@ export async function POST(request: NextRequest) {
             .insert({ name: row.department, code })
             .select();
           department = (newDepts?.[0] as Record<string, unknown>) || null;
+
+          if (department) {
+            deptMap.set(row.department.toLowerCase(), department);
+            if (department.code) {
+              deptMap.set((department.code as string).toLowerCase(), department);
+            }
+          }
         }
 
         if (!department) {

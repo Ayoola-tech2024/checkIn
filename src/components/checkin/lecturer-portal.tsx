@@ -21,6 +21,8 @@ import {
   Eye,
   CheckCircle2,
   XCircle,
+  ArrowLeft,
+  RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -43,13 +45,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -140,7 +135,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
   const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Fetch venues and departments
+  // Fetch venues and departments when dialog opens
   useEffect(() => {
     if (open) {
       fetch('/api/admin/venues')
@@ -203,14 +198,13 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
         onOpenChange(false);
         onCreated();
       } else if (res.status === 409) {
-        // Concurrency conflict
         const conflicts = json.data?.conflicts || [];
         if (json.error?.includes('Venue')) {
           const conflictList = conflicts.map((c: { title: string; courseName: string; scheduledAt: string }) =>
             `"${c.title}" (${c.courseName}) at ${format(new Date(c.scheduledAt), 'PPp')}`
           ).join(', ');
           toast.error(`Venue conflict: ${conflictList}`, { duration: 8000 });
-        } else if (json.error?.includes('department')) {
+        } else if (json.error?.includes('department') || json.error?.includes('Department')) {
           const conflictList = conflicts.map((c: { title: string; conflictingDepartments?: string[] }) =>
             `"${c.title}" (Depts: ${c.conflictingDepartments?.join(', ')})`
           ).join(', ');
@@ -228,13 +222,14 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
     }
   };
 
-  // Filter departments for selected course
-  const courseDepartments = courseId
-    ? courses.find((c) => c.id === courseId)?.departments || departments
+  // Filter departments for selected course - if course has specific departments, show those; otherwise show all
+  const selectedCourse = courses.find((c) => c.id === courseId);
+  const courseDepartments = selectedCourse?.departments?.length
+    ? selectedCourse.departments
     : departments;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Session</DialogTitle>
@@ -256,23 +251,28 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Course *</Label>
-              <Select value={courseId} onValueChange={(val) => {
-                setCourseId(val);
-                setSelectedDepts([]);
-                const course = courses.find((c) => c.id === val);
-                if (course) setLevel(course.level);
-              }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select course" />
-                </SelectTrigger>
-                <SelectContent>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                value={courseId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCourseId(val);
+                  setSelectedDepts([]);
+                  const course = courses.find((c) => c.id === val);
+                  if (course) setLevel(course.level);
+                }}
+              >
+                <option value="">Select course</option>
+                {courses.length === 0 ? (
+                  <option value="" disabled>No courses assigned yet</option>
+                ) : (
+                  courses.map((c) => (
+                    <option key={c.id} value={c.id}>
                       {c.code} - {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
 
             <div className="space-y-2">
@@ -293,18 +293,22 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
           {/* Venue */}
           <div className="space-y-2">
             <Label>Venue *</Label>
-            <Select value={venueId} onValueChange={setVenueId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select venue" />
-              </SelectTrigger>
-              <SelectContent>
-                {venues.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              value={venueId}
+              onChange={(e) => setVenueId(e.target.value)}
+            >
+              <option value="">Select venue</option>
+              {venues.length === 0 ? (
+                <option value="" disabled>No venues available</option>
+              ) : (
+                venues.map((v) => (
+                  <option key={v.id} value={v.id}>
                     {v.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  </option>
+                ))
+              )}
+            </select>
           </div>
 
           {/* Departments */}
@@ -328,7 +332,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
               ))}
               {courseDepartments.length === 0 && (
                 <p className="text-xs text-muted-foreground col-span-3">
-                  {courseId ? 'No departments for this course' : 'Select a course first'}
+                  No departments available. Ask admin to create departments.
                 </p>
               )}
             </div>
@@ -887,6 +891,7 @@ export function LecturerPortal() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [courses, setCourses] = useState<CourseInfo[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
+  const [loadingCourses, setLoadingCourses] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [analyticsSessionId, setAnalyticsSessionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('sessions');
@@ -894,6 +899,24 @@ export function LecturerPortal() {
 
   const lecturerId = user?.id || '';
 
+  // Fetch lecturer's assigned courses independently
+  const fetchCourses = useCallback(async () => {
+    if (!lecturerId) return;
+    setLoadingCourses(true);
+    try {
+      const res = await fetch(`/api/lecturer/courses?lecturerId=${lecturerId}`);
+      const json: ApiResponse<CourseInfo[]> = await res.json();
+      if (json.success && json.data) {
+        setCourses(json.data);
+      }
+    } catch {
+      // Silent fail
+    } finally {
+      setLoadingCourses(false);
+    }
+  }, [lecturerId]);
+
+  // Fetch sessions
   const fetchSessions = useCallback(async () => {
     if (!lecturerId) return;
     try {
@@ -901,21 +924,6 @@ export function LecturerPortal() {
       const json: ApiResponse<SessionInfo[]> = await res.json();
       if (json.success && json.data) {
         setSessions(json.data);
-        // Extract courses from sessions
-        const courseMap = new Map<string, CourseInfo>();
-        for (const s of json.data) {
-          if (s.courseId && s.courseName && s.courseCode) {
-            courseMap.set(s.courseId, {
-              id: s.courseId,
-              name: s.courseName,
-              code: s.courseCode,
-              level: s.level,
-              lecturerId,
-              departments: s.departments,
-            });
-          }
-        }
-        setCourses(Array.from(courseMap.values()));
       }
     } catch {
       // silent
@@ -925,8 +933,9 @@ export function LecturerPortal() {
   }, [lecturerId]);
 
   useEffect(() => {
+    fetchCourses();
     fetchSessions();
-  }, [fetchSessions]);
+  }, [fetchCourses, fetchSessions]);
 
   // Poll when there's an active session
   useEffect(() => {
@@ -938,6 +947,11 @@ export function LecturerPortal() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [sessions, fetchSessions]);
+
+  const handleLogout = useCallback(() => {
+    logout();
+    toast.info('Logged out successfully');
+  }, [logout]);
 
   // Analytics view
   if (analyticsSessionId) {
@@ -966,12 +980,22 @@ export function LecturerPortal() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium hidden sm:inline">{user?.name}</span>
-            <Button variant="ghost" size="sm" onClick={logout}>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="mr-1 h-4 w-4" /> Logout
             </Button>
           </div>
         </div>
       </header>
+
+      {/* Course Assignment Notice */}
+      {courses.length === 0 && !loadingCourses && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 px-4 py-3">
+          <div className="max-w-7xl mx-auto flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
+            <ClipboardCheck className="h-4 w-4 shrink-0" />
+            <span>No courses assigned yet. Ask the admin to assign courses to your account before creating sessions.</span>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full">
@@ -1018,9 +1042,14 @@ export function LecturerPortal() {
             <div className="p-4 md:p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold">My Sessions</h2>
-                <Button onClick={() => setCreateDialogOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" /> Create Session
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => { fetchSessions(); fetchCourses(); }}>
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                  <Button onClick={() => setCreateDialogOpen(true)} disabled={courses.length === 0}>
+                    <Plus className="mr-2 h-4 w-4" /> Create Session
+                  </Button>
+                </div>
               </div>
 
               {loadingSessions ? (
@@ -1034,57 +1063,39 @@ export function LecturerPortal() {
                   <CardContent className="p-12 text-center text-muted-foreground">
                     <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <h3 className="text-lg font-medium mb-1">No Sessions Yet</h3>
-                    <p className="text-sm mb-4">Create your first attendance session to get started.</p>
-                    <Button onClick={() => setCreateDialogOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" /> Create Session
-                    </Button>
+                    <p className="text-sm mb-4">
+                      {courses.length === 0
+                        ? 'You need courses assigned first. Ask admin to assign courses.'
+                        : 'Create your first attendance session to get started.'}
+                    </p>
+                    {courses.length > 0 && (
+                      <Button onClick={() => setCreateDialogOpen(true)}>
+                        <Plus className="mr-2 h-4 w-4" /> Create Session
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               ) : (
                 <div className="space-y-4">
-                  {/* Active sessions first */}
                   {sessions
                     .filter((s) => s.status === 'active')
                     .map((s) => (
-                      <SessionCard
-                        key={s.id}
-                        session={s}
-                        onRefresh={fetchSessions}
-                        onViewAnalytics={setAnalyticsSessionId}
-                      />
+                      <SessionCard key={s.id} session={s} onRefresh={fetchSessions} onViewAnalytics={setAnalyticsSessionId} />
                     ))}
-                  {/* Scheduled sessions */}
                   {sessions
                     .filter((s) => s.status === 'scheduled')
                     .map((s) => (
-                      <SessionCard
-                        key={s.id}
-                        session={s}
-                        onRefresh={fetchSessions}
-                        onViewAnalytics={setAnalyticsSessionId}
-                      />
+                      <SessionCard key={s.id} session={s} onRefresh={fetchSessions} onViewAnalytics={setAnalyticsSessionId} />
                     ))}
-                  {/* Completed sessions */}
                   {sessions
                     .filter((s) => s.status === 'completed')
                     .map((s) => (
-                      <SessionCard
-                        key={s.id}
-                        session={s}
-                        onRefresh={fetchSessions}
-                        onViewAnalytics={setAnalyticsSessionId}
-                      />
+                      <SessionCard key={s.id} session={s} onRefresh={fetchSessions} onViewAnalytics={setAnalyticsSessionId} />
                     ))}
-                  {/* Cancelled sessions */}
                   {sessions
                     .filter((s) => s.status === 'cancelled')
                     .map((s) => (
-                      <SessionCard
-                        key={s.id}
-                        session={s}
-                        onRefresh={fetchSessions}
-                        onViewAnalytics={setAnalyticsSessionId}
-                      />
+                      <SessionCard key={s.id} session={s} onRefresh={fetchSessions} onViewAnalytics={setAnalyticsSessionId} />
                     ))}
                 </div>
               )}
@@ -1098,14 +1109,35 @@ export function LecturerPortal() {
 
           {/* Analytics Tab */}
           <TabsContent value="analytics" className="mt-0">
-            <div className="p-4 md:p-6 space-y-4">
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" /> Session Analytics
-              </h2>
-              <SessionAnalyticsSelector
-                sessions={sessions}
-                onViewAnalytics={setAnalyticsSessionId}
-              />
+            <div className="p-4 md:p-6">
+              <h3 className="text-lg font-semibold mb-4">Session Analytics</h3>
+              {sessions.filter((s) => s.status === 'completed').length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-muted-foreground">
+                    No completed sessions to analyze
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {sessions
+                    .filter((s) => s.status === 'completed')
+                    .map((s) => (
+                      <Card key={s.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setAnalyticsSessionId(s.id)}>
+                        <CardContent className="p-4 flex items-center justify-between">
+                          <div>
+                            <h4 className="font-medium">{s.title}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              {s.courseCode} - {s.courseName} &middot; {format(new Date(s.scheduledAt), 'PP')}
+                            </p>
+                          </div>
+                          <Button size="sm" variant="outline">
+                            <BarChart3 className="mr-1 h-3.5 w-3.5" /> View
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+              )}
             </div>
           </TabsContent>
 
@@ -1121,71 +1153,21 @@ export function LecturerPortal() {
         </Tabs>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t mt-auto">
-        <div className="max-w-7xl mx-auto px-4 py-3 text-center text-xs text-muted-foreground">
-          checkIn — Student Attendance Platform
-        </div>
-      </footer>
-
       {/* Create Session Dialog */}
       <CreateSessionDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         lecturerId={lecturerId}
         courses={courses}
-        onCreated={fetchSessions}
+        onCreated={() => { fetchSessions(); fetchCourses(); }}
       />
-    </div>
-  );
-}
 
-// ============================================================
-// Session Analytics Selector (for Analytics tab)
-// ============================================================
-function SessionAnalyticsSelector({
-  sessions,
-  onViewAnalytics,
-}: {
-  sessions: SessionInfo[];
-  onViewAnalytics: (sessionId: string) => void;
-}) {
-  const completedSessions = sessions.filter((s) => s.status === 'completed');
-
-  if (completedSessions.length === 0) {
-    return (
-      <Card>
-        <CardContent className="p-8 text-center text-muted-foreground">
-          No completed sessions to analyze
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {completedSessions.map((s) => (
-        <Card key={s.id} className="hover:shadow-md transition-shadow">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <h4 className="font-semibold truncate">{s.title}</h4>
-              <p className="text-sm text-muted-foreground">
-                {s.courseCode} &middot; {s.venueName} &middot; {format(new Date(s.scheduledAt), 'PPp')}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Attendance: {s.attendanceCount || 0} / {s.totalTargetStudents || '?'}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onViewAnalytics(s.id)}
-            >
-              <BarChart3 className="mr-1 h-3.5 w-3.5" /> View
-            </Button>
-          </CardContent>
-        </Card>
-      ))}
+      {/* Footer */}
+      <footer className="border-t mt-auto">
+        <div className="max-w-7xl mx-auto px-4 py-3 text-center text-xs text-muted-foreground">
+          checkIn — Student Attendance Platform
+        </div>
+      </footer>
     </div>
   );
 }

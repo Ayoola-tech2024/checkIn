@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const { data: departments, error } = await db
       .from('departments')
-      .select('*, students:students(id)')
+      .select('*')
       .order('name', { ascending: true });
 
     if (error) {
@@ -15,11 +15,23 @@ export async function GET() {
       );
     }
 
+    // Manually count students per department
+    const deptIds = (departments || []).map((d: Record<string, unknown>) => d.id as string);
+    let studentCountMap = new Map<string, number>();
+    if (deptIds.length > 0) {
+      const { data: studentsData } = await db.from('students').select('id, department_id').in('department_id', deptIds);
+      for (const s of studentsData || []) {
+        const rec = s as Record<string, unknown>;
+        const dId = rec.department_id as string;
+        studentCountMap.set(dId, (studentCountMap.get(dId) || 0) + 1);
+      }
+    }
+
     const data = (departments || []).map((dept: Record<string, unknown>) => ({
       id: dept.id,
       name: dept.name,
       code: dept.code,
-      studentCount: Array.isArray(dept.students) ? dept.students.length : 0,
+      studentCount: studentCountMap.get(dept.id as string) || 0,
     }));
 
     return NextResponse.json({ success: true, data });
