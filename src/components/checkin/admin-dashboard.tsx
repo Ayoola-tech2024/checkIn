@@ -64,6 +64,8 @@ import {
   XCircle,
   Layers,
   CalendarDays,
+  UserPlus,
+  Copy,
 } from 'lucide-react';
 
 // ============================================================
@@ -81,7 +83,7 @@ function StatCard({
   description?: string;
 }) {
   return (
-    <Card>
+    <Card className="stat-card-accent card-elevated shadow-sm hover:shadow-md transition-shadow duration-200">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
@@ -91,7 +93,7 @@ function StatCard({
               <p className="text-xs text-muted-foreground">{description}</p>
             )}
           </div>
-          <div className="flex items-center justify-center size-10 rounded-lg bg-muted text-muted-foreground">
+          <div className="flex items-center justify-center size-10 rounded-lg bg-primary/10 text-primary">
             {icon}
           </div>
         </div>
@@ -206,24 +208,29 @@ export function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen flex flex-col bg-page-gradient">
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-sm border-b">
+      <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-sm border-b header-gradient">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-primary text-primary-foreground">
+            <div className="flex items-center justify-center size-9 rounded-lg bg-white/20 text-white">
               <Shield className="size-5" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold leading-tight">checkIn</h1>
-              <p className="text-xs text-muted-foreground">Admin Panel</p>
+              <h1 className="text-lg font-semibold leading-tight text-white">checkIn</h1>
+              <p className="text-xs text-white/70">Admin Panel</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground hidden sm:inline">
-              Welcome, <span className="font-medium text-foreground">{user?.name}</span>
+            <span className="text-sm text-white/70 hidden sm:inline">
+              Welcome, <span className="font-medium text-white">{user?.name}</span>
             </span>
-            <Button variant="outline" size="sm" onClick={handleLogout}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="border-white/20 text-white hover:bg-white/10 hover:text-white transition-colors"
+            >
               <LogOut className="size-4" />
               <span className="hidden sm:inline">Logout</span>
             </Button>
@@ -231,12 +238,12 @@ export function AdminDashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6 w-full">
         {/* Stats Row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {statsLoading ? (
             Array.from({ length: 7 }).map((_, i) => (
-              <Card key={i}>
+              <Card key={i} className="card-elevated">
                 <CardContent className="p-4 space-y-2">
                   <Skeleton className="h-4 w-24" />
                   <Skeleton className="h-8 w-12" />
@@ -359,7 +366,7 @@ export function AdminDashboard() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t mt-auto">
+      <footer className="border-t bg-secondary/50 mt-auto">
         <div className="max-w-7xl mx-auto px-4 py-3 text-center text-xs text-muted-foreground">
           checkIn — Student Attendance Platform
         </div>
@@ -391,6 +398,13 @@ function StudentsTab({
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvResult, setCsvResult] = useState<{ imported: number; skipped: number; errors?: string[] } | null>(null);
   const [csvParsing, setCsvParsing] = useState(false);
+
+  // Single student creation state
+  const [createStudentOpen, setCreateStudentOpen] = useState(false);
+  const [studentName, setStudentName] = useState('');
+  const [studentMatric, setStudentMatric] = useState('');
+  const [studentDeptId, setStudentDeptId] = useState('');
+  const [creatingStudent, setCreatingStudent] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -452,6 +466,44 @@ function StudentsTab({
     }
   };
 
+  const handleCreateStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studentName.trim() || !studentMatric.trim() || !studentDeptId) return;
+    setCreatingStudent(true);
+
+    try {
+      const res = await fetch('/api/admin/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: studentName.trim(),
+          matricNumber: studentMatric.trim(),
+          departmentId: studentDeptId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        toast.success(
+          `Student created! Default password: ${data.data.defaultPassword}`,
+          { duration: 10000 }
+        );
+        setStudentName('');
+        setStudentMatric('');
+        setStudentDeptId('');
+        setCreateStudentOpen(false);
+        fetchStudents(filterDept === 'all' ? undefined : filterDept);
+        fetchDepartments();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to create student');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setCreatingStudent(false);
+    }
+  };
+
   const handleFilterChange = (value: string) => {
     setFilterDept(value);
     fetchStudents(value === 'all' ? undefined : value);
@@ -470,15 +522,90 @@ function StudentsTab({
   return (
     <div className="space-y-6">
       {/* CSV Import Section */}
-      <Card>
+      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Upload className="size-5" />
-            CSV Import
-          </CardTitle>
-          <CardDescription>
-            Upload a CSV file with columns: name, matricNumber, department
-          </CardDescription>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Upload className="size-5" />
+                CSV Import
+              </CardTitle>
+              <CardDescription>
+                Upload a CSV file with columns: name, matricNumber, department
+              </CardDescription>
+            </div>
+            <Dialog open={createStudentOpen} onOpenChange={setCreateStudentOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
+                  <UserPlus className="size-4" />
+                  Create Student
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create Student</DialogTitle>
+                  <DialogDescription>
+                    Add a new student to the system. A default password will be generated automatically.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleCreateStudent} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="student-name">Full Name</Label>
+                    <Input
+                      id="student-name"
+                      placeholder="e.g. John Doe"
+                      value={studentName}
+                      onChange={(e) => setStudentName(e.target.value)}
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="student-matric">Matric Number</Label>
+                    <Input
+                      id="student-matric"
+                      placeholder="e.g. CSC/2024/001"
+                      value={studentMatric}
+                      onChange={(e) => setStudentMatric(e.target.value)}
+                      required
+                      className="font-mono"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="student-dept">Department</Label>
+                    <Select value={studentDeptId} onValueChange={setStudentDeptId} required>
+                      <SelectTrigger id="student-dept" className="w-full">
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments.length === 0 ? (
+                          <SelectItem value="_none" disabled>
+                            No departments available
+                          </SelectItem>
+                        ) : (
+                          departments.map((d) => (
+                            <SelectItem key={d.id} value={d.id}>
+                              {d.name} ({d.code})
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="submit"
+                      disabled={creatingStudent || !studentName.trim() || !studentMatric.trim() || !studentDeptId}
+                      className="shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      {creatingStudent && <Loader2 className="size-4 animate-spin" />}
+                      Create Student
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3">
@@ -502,7 +629,7 @@ function StudentsTab({
                 <Button
                   onClick={handleImport}
                   disabled={csvImporting}
-                  className="gap-2"
+                  className="gap-2 shadow-sm hover:shadow-md transition-shadow"
                 >
                   {csvImporting ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -518,10 +645,10 @@ function StudentsTab({
           {/* CSV Preview */}
           {csvPreview.length > 0 && (
             <div className="border rounded-lg overflow-hidden">
-              <div className="max-h-64 overflow-y-auto">
+              <div className="max-h-64 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/50">
                       <TableHead className="w-12">#</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Matric Number</TableHead>
@@ -530,7 +657,7 @@ function StudentsTab({
                   </TableHeader>
                   <TableBody>
                     {csvPreview.slice(0, 50).map((row, i) => (
-                      <TableRow key={i}>
+                      <TableRow key={i} className={i % 2 === 1 ? 'bg-primary/[0.02]' : ''}>
                         <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                         <TableCell>{row.name}</TableCell>
                         <TableCell className="font-mono text-sm">{row.matricNumber}</TableCell>
@@ -582,7 +709,7 @@ function StudentsTab({
       </Card>
 
       {/* Student List */}
-      <Card>
+      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -628,10 +755,10 @@ function StudentsTab({
             </div>
           ) : (
             <div className="border rounded-lg overflow-hidden">
-              <div className="max-h-96 overflow-y-auto">
+              <div className="max-h-96 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/50">
                       <TableHead>Name</TableHead>
                       <TableHead>Matric No.</TableHead>
                       <TableHead>Department</TableHead>
@@ -639,8 +766,11 @@ function StudentsTab({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((s) => (
-                      <TableRow key={s.id}>
+                    {filtered.map((s, i) => (
+                      <TableRow
+                        key={s.id}
+                        className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+                      >
                         <TableCell className="font-medium">{s.name}</TableCell>
                         <TableCell className="font-mono text-sm">{s.matricNumber}</TableCell>
                         <TableCell>{s.departmentName}</TableCell>
@@ -716,7 +846,7 @@ function DepartmentsTab({
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -730,7 +860,7 @@ function DepartmentsTab({
             </div>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5">
+                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
                   <Plus className="size-4" />
                   Add Department
                 </Button>
@@ -767,7 +897,7 @@ function DepartmentsTab({
                     />
                   </div>
                   <DialogFooter>
-                    <Button type="submit" disabled={creating}>
+                    <Button type="submit" disabled={creating} className="shadow-sm hover:shadow-md transition-shadow">
                       {creating && <Loader2 className="size-4 animate-spin" />}
                       Create Department
                     </Button>
@@ -787,15 +917,18 @@ function DepartmentsTab({
             <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/50">
                     <TableHead>Name</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Students</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {departments.map((d) => (
-                    <TableRow key={d.id}>
+                  {departments.map((d, i) => (
+                    <TableRow
+                      key={d.id}
+                      className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+                    >
                       <TableCell className="font-medium">{d.name}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="font-mono">
@@ -863,7 +996,7 @@ function LecturersTab({
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -877,7 +1010,7 @@ function LecturersTab({
             </div>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5">
+                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
                   <Plus className="size-4" />
                   Add Lecturer
                 </Button>
@@ -913,7 +1046,7 @@ function LecturersTab({
                     />
                   </div>
                   <DialogFooter>
-                    <Button type="submit" disabled={creating}>
+                    <Button type="submit" disabled={creating} className="shadow-sm hover:shadow-md transition-shadow">
                       {creating && <Loader2 className="size-4 animate-spin" />}
                       Create Lecturer
                     </Button>
@@ -931,18 +1064,21 @@ function LecturersTab({
             </div>
           ) : (
             <div className="border rounded-lg overflow-hidden">
-              <div className="max-h-96 overflow-y-auto">
+              <div className="max-h-96 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/50">
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Courses</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {lecturers.map((l) => (
-                      <TableRow key={l.id}>
+                    {lecturers.map((l, i) => (
+                      <TableRow
+                        key={l.id}
+                        className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+                      >
                         <TableCell className="font-medium">{l.name}</TableCell>
                         <TableCell className="text-muted-foreground">{l.email}</TableCell>
                         <TableCell>
@@ -1041,7 +1177,7 @@ function CoursesTab({
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -1055,7 +1191,7 @@ function CoursesTab({
             </div>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5">
+                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
                   <Plus className="size-4" />
                   Add Course
                 </Button>
@@ -1126,14 +1262,14 @@ function CoursesTab({
                   </div>
                   <div className="space-y-2">
                     <Label>Departments</Label>
-                    <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-2">
+                    <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-2 custom-scrollbar">
                       {departments.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No departments available. Create one first.</p>
                       ) : (
                         departments.map((d) => (
                           <label
                             key={d.id}
-                            className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5"
+                            className="flex items-center gap-2 text-sm cursor-pointer hover:bg-primary/5 rounded px-1 py-0.5 transition-colors"
                           >
                             <Checkbox
                               checked={selectedDeptIds.includes(d.id)}
@@ -1155,6 +1291,7 @@ function CoursesTab({
                     <Button
                       type="submit"
                       disabled={creating || selectedDeptIds.length === 0}
+                      className="shadow-sm hover:shadow-md transition-shadow"
                     >
                       {creating && <Loader2 className="size-4 animate-spin" />}
                       Create Course
@@ -1173,10 +1310,10 @@ function CoursesTab({
             </div>
           ) : (
             <div className="border rounded-lg overflow-hidden">
-              <div className="max-h-96 overflow-y-auto">
+              <div className="max-h-96 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/50">
                       <TableHead>Course</TableHead>
                       <TableHead>Code</TableHead>
                       <TableHead>Level</TableHead>
@@ -1185,8 +1322,11 @@ function CoursesTab({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {courses.map((c) => (
-                      <TableRow key={c.id}>
+                    {courses.map((c, i) => (
+                      <TableRow
+                        key={c.id}
+                        className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+                      >
                         <TableCell className="font-medium">{c.name}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className="font-mono">
@@ -1271,7 +1411,7 @@ function VenuesTab({
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -1285,7 +1425,7 @@ function VenuesTab({
             </div>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5">
+                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
                   <Plus className="size-4" />
                   Add Venue
                 </Button>
@@ -1336,7 +1476,7 @@ function VenuesTab({
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button type="submit" disabled={creating}>
+                    <Button type="submit" disabled={creating} className="shadow-sm hover:shadow-md transition-shadow">
                       {creating && <Loader2 className="size-4 animate-spin" />}
                       Create Venue
                     </Button>
@@ -1356,15 +1496,18 @@ function VenuesTab({
             <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Venue</TableHead>
                     <TableHead>Latitude</TableHead>
                     <TableHead>Longitude</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {venues.map((v) => (
-                    <TableRow key={v.id}>
+                  {venues.map((v, i) => (
+                    <TableRow
+                      key={v.id}
+                      className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+                    >
                       <TableCell className="font-medium">{v.name}</TableCell>
                       <TableCell className="font-mono text-sm">{v.latitude}</TableCell>
                       <TableCell className="font-mono text-sm">{v.longitude}</TableCell>

@@ -187,12 +187,14 @@ function ActivationFlow() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 bg-background">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 bg-page-gradient">
       <div className="w-full max-w-md space-y-6">
         {/* Header with back to login */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
-            <GraduationCap className="h-8 w-8 text-primary" />
+            <div className="flex items-center justify-center size-10 rounded-xl header-gradient text-white shadow-sm">
+              <GraduationCap className="h-5 w-5" />
+            </div>
             <h1 className="text-2xl font-bold text-primary">checkIn</h1>
           </div>
           <p className="text-sm text-muted-foreground">Activate your student account</p>
@@ -216,7 +218,7 @@ function ActivationFlow() {
                 <div
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                     isActive
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
                       : isDone
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
                         : 'bg-muted text-muted-foreground'
@@ -235,9 +237,12 @@ function ActivationFlow() {
 
         {/* Step 1: Email & Password */}
         {step === 'email' && (
-          <Card>
+          <Card className="card-elevated border-0 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Link Your Email</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Mail className="h-5 w-5 text-primary" />
+                Link Your Email
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleEmailSubmit} className="space-y-4">
@@ -296,10 +301,13 @@ function ActivationFlow() {
         {/* Step 2: Selfie Capture */}
         {step === 'selfie' && (
           <div className="space-y-4">
-            <Card>
+            <Card className="card-elevated border-0 shadow-sm">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Capture Your Selfie</CardTitle>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Camera className="h-5 w-5 text-primary" />
+                    Capture Your Selfie
+                  </CardTitle>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -312,10 +320,12 @@ function ActivationFlow() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  This photo will be used for identity verification during attendance check-in.
-                  Make sure your face is clearly visible and well-lit.
-                </p>
+                <div className="rounded-lg bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                  <p className="text-sm text-muted-foreground">
+                    This photo will be used for identity verification during attendance check-in.
+                    Make sure your face is clearly visible and well-lit.
+                  </p>
+                </div>
               </CardContent>
             </Card>
             <FaceCapture
@@ -328,12 +338,16 @@ function ActivationFlow() {
 
         {/* Step 3: Processing */}
         {step === 'processing' && (
-          <Card>
+          <Card className="card-elevated border-0 shadow-sm">
             <CardContent className="p-6">
               <div className="flex flex-col items-center justify-center gap-4 py-8">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                <div className="relative">
+                  <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                </div>
                 <div className="text-center">
-                  <p className="font-medium">Activating Your Account</p>
+                  <p className="font-semibold">Activating Your Account</p>
                   <p className="text-sm text-muted-foreground mt-1">
                     Processing your facial data and setting up your profile...
                   </p>
@@ -345,10 +359,10 @@ function ActivationFlow() {
 
         {/* Step 4: Complete */}
         {step === 'complete' && (
-          <Card>
+          <Card className="card-elevated border-0 shadow-sm">
             <CardContent className="p-6">
               <div className="flex flex-col items-center justify-center gap-4 py-8">
-                <div className="h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
+                <div className="h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center ring-4 ring-emerald-100/50 dark:ring-emerald-950/50">
                   <CheckCircle2 className="h-10 w-10 text-emerald-500" />
                 </div>
                 <div className="text-center">
@@ -441,7 +455,7 @@ function ActivePortal() {
   // Check-in flow is active
   if (activeCheckIn) {
     return (
-      <div className="min-h-screen p-4 sm:p-6 bg-background">
+      <div className="min-h-screen p-4 sm:p-6 bg-page-gradient">
         <div className="max-w-lg mx-auto pt-4">
           <CheckInFlow
             session={activeCheckIn}
@@ -455,38 +469,42 @@ function ActivePortal() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-page-gradient">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <GraduationCap className="h-6 w-6 text-primary shrink-0" />
-            <div className="min-w-0">
-              <h1 className="text-sm font-semibold truncate">{user?.name}</h1>
-              <p className="text-xs text-muted-foreground truncate">
-                {user?.matricNumber} • {user?.departmentName}
-              </p>
+      <header className="sticky top-0 z-10 bg-card/80 backdrop-blur-sm border-b border-border/60">
+        <div className="header-gradient">
+          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-white/20 shrink-0">
+                <GraduationCap className="h-4 w-4 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-sm font-semibold truncate text-white">{user?.name}</h1>
+                <p className="text-xs text-white/70 truncate">
+                  {user?.matricNumber} • {user?.departmentName}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={fetchSessions}
-              className="h-9 w-9"
-              title="Refresh sessions"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              className="h-9 w-9 text-muted-foreground hover:text-red-500"
-              title="Log out"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={fetchSessions}
+                className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10"
+                title="Refresh sessions"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleLogout}
+                className="h-9 w-9 text-white/80 hover:text-red-200 hover:bg-white/10"
+                title="Log out"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -509,7 +527,9 @@ function ActivePortal() {
 
         {!loading && sessions.length === 0 && (
           <div className="text-center py-16">
-            <BookOpen className="h-12 w-12 mx-auto text-muted-foreground/50" />
+            <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-blue-50/80 dark:bg-blue-950/30 mb-4">
+              <BookOpen className="h-8 w-8 text-primary/40" />
+            </div>
             <p className="text-muted-foreground mt-4">No sessions found for your department</p>
             <p className="text-xs text-muted-foreground mt-1">
               Sessions will appear here when a lecturer creates one for your department
@@ -575,7 +595,7 @@ function ActivePortal() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t mt-auto">
+      <footer className="bg-secondary/50 border-t border-border/60 mt-auto">
         <div className="max-w-2xl mx-auto px-4 py-3 text-center text-xs text-muted-foreground">
           checkIn — Student Attendance Platform
         </div>
@@ -702,10 +722,14 @@ function SessionCard({ session, onCheckIn }: SessionCardProps) {
 
   return (
     <Card
-      className={`transition-all ${
-        isActive && !alreadyCheckedIn && onCheckIn
-          ? 'cursor-pointer hover:shadow-md hover:border-emerald-500/50 active:scale-[0.98]'
-          : ''
+      className={`card-elevated hover:shadow-md transition-shadow border-0 ${
+        isActive
+          ? alreadyCheckedIn
+            ? 'border-l-4 border-l-emerald-400 dark:border-l-emerald-600 bg-card'
+            : onCheckIn
+              ? 'cursor-pointer hover:border-emerald-500/50 active:scale-[0.98] border-l-4 border-l-blue-400 dark:border-l-blue-600 bg-blue-50/30 dark:bg-blue-950/20'
+              : 'border-l-4 border-l-emerald-400 dark:border-l-emerald-600 bg-card'
+          : 'bg-card'
       }`}
       onClick={isActive && !alreadyCheckedIn && onCheckIn ? onCheckIn : undefined}
     >
@@ -761,7 +785,7 @@ function SessionCard({ session, onCheckIn }: SessionCardProps) {
           {isActive && !alreadyCheckedIn && onCheckIn && (
             <Button
               size="sm"
-              className="shrink-0 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="shrink-0 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
               onClick={(e) => {
                 e.stopPropagation();
                 onCheckIn();
@@ -773,13 +797,15 @@ function SessionCard({ session, onCheckIn }: SessionCardProps) {
           )}
 
           {alreadyCheckedIn && (
-            <CheckCircle2 className="h-6 w-6 text-emerald-500 shrink-0" />
+            <div className="flex items-center justify-center size-8 rounded-full bg-emerald-50 dark:bg-emerald-950/50 shrink-0">
+              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+            </div>
           )}
         </div>
 
         {/* Score display for attended sessions */}
         {attendanceStatus && session.attendance?.similarityScore !== null && session.attendance?.similarityScore !== undefined && (
-          <div className="mt-3 pt-3 border-t">
+          <div className="mt-3 pt-3 border-t border-border/60">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Similarity Score</span>
               <span className="font-medium">

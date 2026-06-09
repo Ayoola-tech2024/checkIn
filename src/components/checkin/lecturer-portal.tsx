@@ -314,7 +314,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
           {/* Departments */}
           <div className="space-y-2">
             <Label>Departments * (select one or more)</Label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto border rounded-md p-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto border rounded-md p-3 bg-blue-50/30 dark:bg-blue-950/10">
               {courseDepartments.map((dept) => (
                 <div key={dept.id} className="flex items-center space-x-2">
                   <Checkbox
@@ -442,7 +442,7 @@ function LiveMonitor({ session }: LiveMonitorProps) {
   const total = session.totalTargetStudents || 0;
 
   return (
-    <Card className="border-emerald-200 dark:border-emerald-800">
+    <Card className="card-elevated border-emerald-200 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/10">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <Radio className="h-4 w-4 text-emerald-600 animate-pulse" />
@@ -478,7 +478,7 @@ function LiveMonitor({ session }: LiveMonitorProps) {
         )}
 
         {/* Recent Check-ins */}
-        <div className="max-h-60 overflow-y-auto">
+        <div className="max-h-60 overflow-y-auto custom-scrollbar">
           {loading ? (
             <div className="space-y-2">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -596,8 +596,16 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
     }
   };
 
+  const isActive = session.status === 'active';
+
   return (
-    <Card className={session.status === 'active' ? 'border-emerald-300 dark:border-emerald-700' : ''}>
+    <Card
+      className={`card-elevated transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-0.5 ${
+        isActive
+          ? 'border-l-4 border-l-emerald-500 border-emerald-200 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/10'
+          : 'hover:border-blue-200 dark:hover:border-blue-800'
+      }`}
+    >
       <CardContent className="p-4 space-y-3">
         {/* Header row */}
         <div className="flex items-start justify-between gap-2">
@@ -632,7 +640,7 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
         {/* Departments */}
         <div className="flex flex-wrap gap-1">
           {session.departments.map((d) => (
-            <Badge key={d.id} variant="outline" className="text-xs">
+            <Badge key={d.id} variant="outline" className="text-xs bg-blue-50/50 dark:bg-blue-950/20 border-blue-200/50 dark:border-blue-800/30">
               {d.name}
             </Badge>
           ))}
@@ -790,7 +798,7 @@ function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold flex items-center gap-2">
-          <ClipboardCheck className="h-5 w-5" />
+          <ClipboardCheck className="h-5 w-5 text-primary" />
           Pending Reviews
           {queue.length > 0 && (
             <Badge variant="secondary" className="bg-amber-500 text-white">
@@ -801,7 +809,7 @@ function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
       </div>
 
       {queue.length === 0 ? (
-        <Card>
+        <Card className="card-elevated">
           <CardContent className="p-8 text-center text-muted-foreground">
             No pending reviews
           </CardContent>
@@ -809,7 +817,7 @@ function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
       ) : (
         <div className="space-y-3">
           {queue.map((item) => (
-            <Card key={item.id}>
+            <Card key={item.id} className="card-elevated transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-0.5 border-l-4 border-l-amber-400">
               <CardContent className="p-4">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                   {/* Selfie thumbnail */}
@@ -818,7 +826,7 @@ function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
                       <img
                         src={item.selfieData}
                         alt="Student selfie"
-                        className="w-14 h-14 rounded-lg object-cover border"
+                        className="w-14 h-14 rounded-lg object-cover border ring-2 ring-blue-100 dark:ring-blue-900/30"
                       />
                     </div>
                   )}
@@ -827,7 +835,7 @@ function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-semibold">{item.studentName}</span>
-                      <Badge variant="outline" className="text-xs">{item.matricNumber}</Badge>
+                      <Badge variant="outline" className="text-xs bg-blue-50/50 dark:bg-blue-950/20">{item.matricNumber}</Badge>
                     </div>
                     <div className="text-sm text-muted-foreground space-y-0.5">
                       <p>{item.departmentName}</p>
@@ -964,23 +972,23 @@ export function LecturerPortal() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-page-gradient">
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="header-gradient sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
                 <ClipboardCheck className="h-4 w-4 text-white" />
               </div>
-              <h1 className="text-lg font-bold">checkIn</h1>
+              <h1 className="text-lg font-bold text-white">checkIn</h1>
             </div>
-            <Separator orientation="vertical" className="h-6" />
-            <span className="text-sm text-muted-foreground">Lecturer Portal</span>
+            <Separator orientation="vertical" className="h-6 bg-white/20" />
+            <span className="text-sm text-white/70">Lecturer Portal</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium hidden sm:inline">{user?.name}</span>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
+            <span className="text-sm font-medium text-white/90 hidden sm:inline">{user?.name}</span>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-white/80 hover:text-white hover:bg-white/10">
               <LogOut className="mr-1 h-4 w-4" /> Logout
             </Button>
           </div>
@@ -1000,36 +1008,36 @@ export function LecturerPortal() {
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-          <div className="border-b bg-card">
+          <div className="border-b bg-card/80 backdrop-blur-sm sticky top-[52px] z-40">
             <div className="max-w-7xl mx-auto px-4">
               <TabsList className="h-12 bg-transparent p-0 gap-0">
                 <TabsTrigger
                   value="sessions"
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 h-12"
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Sessions
                 </TabsTrigger>
                 <TabsTrigger
                   value="review"
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 h-12"
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Review Queue
                 </TabsTrigger>
                 <TabsTrigger
                   value="analytics"
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 h-12"
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Analytics
                 </TabsTrigger>
                 <TabsTrigger
                   value="grading"
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 h-12"
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Grading
                 </TabsTrigger>
                 <TabsTrigger
                   value="export"
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 h-12"
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Export
                 </TabsTrigger>
@@ -1059,7 +1067,7 @@ export function LecturerPortal() {
                   ))}
                 </div>
               ) : sessions.length === 0 ? (
-                <Card>
+                <Card className="card-elevated">
                   <CardContent className="p-12 text-center text-muted-foreground">
                     <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <h3 className="text-lg font-medium mb-1">No Sessions Yet</h3>
@@ -1112,7 +1120,7 @@ export function LecturerPortal() {
             <div className="p-4 md:p-6">
               <h3 className="text-lg font-semibold mb-4">Session Analytics</h3>
               {sessions.filter((s) => s.status === 'completed').length === 0 ? (
-                <Card>
+                <Card className="card-elevated">
                   <CardContent className="p-8 text-center text-muted-foreground">
                     No completed sessions to analyze
                   </CardContent>
@@ -1122,7 +1130,11 @@ export function LecturerPortal() {
                   {sessions
                     .filter((s) => s.status === 'completed')
                     .map((s) => (
-                      <Card key={s.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setAnalyticsSessionId(s.id)}>
+                      <Card
+                        key={s.id}
+                        className="card-elevated cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-0.5 hover:border-blue-200 dark:hover:border-blue-800"
+                        onClick={() => setAnalyticsSessionId(s.id)}
+                      >
                         <CardContent className="p-4 flex items-center justify-between">
                           <div>
                             <h4 className="font-medium">{s.title}</h4>
@@ -1163,7 +1175,7 @@ export function LecturerPortal() {
       />
 
       {/* Footer */}
-      <footer className="border-t mt-auto">
+      <footer className="border-t mt-auto bg-secondary/50">
         <div className="max-w-7xl mx-auto px-4 py-3 text-center text-xs text-muted-foreground">
           checkIn — Student Attendance Platform
         </div>
