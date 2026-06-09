@@ -25,6 +25,9 @@ import {
   GraduationCap,
   BookOpen,
   ArrowRight,
+  ArrowLeft,
+  Fingerprint,
+  LogIn,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,7 +78,7 @@ export function StudentPortal() {
 // ============================================================
 
 function ActivationFlow() {
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser, logout } = useAuthStore();
   const [step, setStep] = useState<ActivationStep>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -186,13 +189,20 @@ function ActivationFlow() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 bg-background">
       <div className="w-full max-w-md space-y-6">
-        {/* Header */}
+        {/* Header with back to login */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
             <GraduationCap className="h-8 w-8 text-primary" />
             <h1 className="text-2xl font-bold text-primary">checkIn</h1>
           </div>
           <p className="text-sm text-muted-foreground">Activate your student account</p>
+          <button
+            onClick={logout}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Back to Login
+          </button>
         </div>
 
         {/* Step indicators */}
@@ -240,6 +250,7 @@ function ActivationFlow() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className={errors.email ? 'border-red-500' : ''}
+                    autoFocus
                   />
                   {errors.email && (
                     <p className="text-xs text-red-500">{errors.email}</p>
@@ -287,7 +298,18 @@ function ActivationFlow() {
           <div className="space-y-4">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Capture Your Selfie</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Capture Your Selfie</CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setStep('email'); setFaceData(null); }}
+                    className="gap-1.5 text-muted-foreground"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">

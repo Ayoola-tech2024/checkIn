@@ -1121,6 +1121,13 @@ export function LecturerPortal() {
         </Tabs>
       </main>
 
+      {/* Footer */}
+      <footer className="border-t mt-auto">
+        <div className="max-w-7xl mx-auto px-4 py-3 text-center text-xs text-muted-foreground">
+          checkIn — Student Attendance Platform
+        </div>
+      </footer>
+
       {/* Create Session Dialog */}
       <CreateSessionDialog
         open={createDialogOpen}

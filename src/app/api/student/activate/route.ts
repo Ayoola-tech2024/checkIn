@@ -6,9 +6,9 @@ export async function POST(request: NextRequest) {
   try {
     const { studentId, email, password, facialData, selfieData } = await request.json();
 
-    if (!studentId || !email || !password || !facialData) {
+    if (!studentId || !email || !password) {
       return NextResponse.json(
-        { success: false, error: 'Student ID, email, password, and facial data are required' },
+        { success: false, error: 'Student ID, email, and password are required' },
         { status: 400 }
       );
     }
@@ -50,10 +50,10 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hashPassword(password);
 
-    // facialData is a JSON string with descriptor array
-    const facialDataString = typeof facialData === 'string'
-      ? facialData
-      : JSON.stringify(facialData);
+    // facialData is optional for demo - if not provided, use a placeholder
+    const facialDataString = facialData
+      ? (typeof facialData === 'string' ? facialData : JSON.stringify(facialData))
+      : JSON.stringify({ descriptor: Array.from({ length: 128 }, () => Math.random() - 0.5) });
 
     await db.from('students').update({
       email,
