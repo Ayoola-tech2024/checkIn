@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,71 +14,92 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const course = await db.course.findUnique({
-      where: { id: courseId },
-      include: {
-        departments: {
-          include: {
-            department: {
-              include: {
-                students: {
-                  orderBy: { matricNumber: 'asc' },
-                },
-              },
-            },
-          },
-        },
-        sessions: {
-          where: semesterId
-            ? {
-                scheduledAt: {
-                  gte: (await db.semester.findUnique({ where: { id: semesterId } }))?.startDate,
-                  lte: (await db.semester.findUnique({ where: { id: semesterId } }))?.endDate,
-                },
-              }
-            : undefined,
-          orderBy: { scheduledAt: 'asc' },
-        },
-        grading: {
-          where: semesterId ? { semesterId } : undefined,
-        },
-      },
-    });
-
-    if (!course) {
+    // Get course
+    const { data: courses } = await db.from('courses').select('*').eq('id', courseId);
+    if (!courses || courses.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Course not found' },
         { status: 404 }
       );
     }
 
-    const totalMarks = course.grading.length > 0 ? course.grading[0].totalMarks : 0;
-    const sessions = course.sessions;
+    const course = courses[0] as Record<string, unknown>;
+
+    // Get course_departments
+    const { data: courseDepts } = await db
+      .from('course_departments')
+      .select('*, departments(*)')
+      .eq('course_id', courseId);
+
+    // Get department IDs
+    const deptIds = (courseDepts || []).map((cd: Record<string, unknown>) => cd.department_id as string);
+
+    // Get students in those departments
+    let students: Record<string, unknown>[] = [];
+    if (deptIds.length > 0) {
+      const { data: studentsData } = await db
+        .from('students')
+        .select('*, departments(*)')
+        .in('department_id', deptIds)
+        .order('matric_number', { ascending: true });
+      students = (studentsData || []) as Record<string, unknown>[];
+    }
+
+    // Get sessions for this course, optionally filtered by semester
+    let sessionsQuery = db.from('sessions').select('*').eq('course_id', courseId);
+    if (semesterId) {
+      // Get semester date range
+      const { data: semesters } = await db.from('semesters').select('*').eq('id', semesterId);
+      const semester = semesters?.[0] as Record<string, unknown> | undefined;
+      if (semester) {
+        sessionsQuery = sessionsQuery.gte('scheduled_at', semester.start_date as string).lte('scheduled_at', semester.end_date as string);
+      }
+    }
+    const { data: sessionsData } = await sessionsQuery.order('scheduled_at', { ascending: true });
+    const sessions = (sessionsData || []) as Record<string, unknown>[];
+
+    // Get grading info
+    let gradingQuery = db.from('course_gradings').select('*').eq('course_id', courseId);
+    if (semesterId) {
+      gradingQuery = gradingQuery.eq('semester_id', semesterId);
+    }
+    const { data: gradings } = await gradingQuery;
+    const totalMarks = (gradings && gradings.length > 0) ? (gradings[0] as Record<string, unknown>).total_marks as number : 0;
+
     const totalSessions = sessions.length;
 
     // Get all attendances for these sessions
-    const sessionIds = sessions.map((s) => s.id);
-    const attendances = await db.attendance.findMany({
-      where: { sessionId: { in: sessionIds } },
-    });
+    const sessionIds = sessions.map((s: Record<string, unknown>) => s.id as string);
+    let attendances: Record<string, unknown>[] = [];
+    if (sessionIds.length > 0) {
+      const { data: attendancesData } = await db
+        .from('attendances')
+        .select('*')
+        .in('session_id', sessionIds);
+      attendances = (attendancesData || []) as Record<string, unknown>[];
+    }
 
-    // Group by department
-    const departments = course.departments.map((cd) => {
-      const dept = cd.department;
-      const students = dept.students.map((student) => {
+    // Group students by department
+    const departments = (courseDepts || []).map((cd: Record<string, unknown>) => {
+      const dept = cd.departments as Record<string, unknown>;
+      const deptStudents = students.filter(
+        (s: Record<string, unknown>) => s.department_id === cd.department_id
+      );
+
+      const studentData = deptStudents.map((student: Record<string, unknown>) => {
         // Get attendance for each session
-        const sessionStatuses = sessions.map((session) => {
+        const sessionStatuses = sessions.map((session: Record<string, unknown>) => {
           const attendance = attendances.find(
-            (a) => a.studentId === student.id && a.sessionId === session.id
+            (a: Record<string, unknown>) => a.student_id === student.id && a.session_id === session.id
           );
           return {
-            date: session.scheduledAt.toISOString().split('T')[0],
-            status: attendance ? attendance.status : 'absent',
+            date: new Date(session.scheduled_at as string).toISOString().split('T')[0],
+            status: attendance ? (attendance.status as string) : 'absent',
           };
         });
 
         const presentCount = sessionStatuses.filter(
-          (s) => s.status === 'present'
+          (s: { status: string }) => s.status === 'present'
         ).length;
         const attendancePercentage =
           totalSessions > 0 ? Math.round((presentCount / totalSessions) * 100) : 0;
@@ -89,7 +110,7 @@ export async function GET(request: NextRequest) {
 
         return {
           name: student.name,
-          matricNumber: student.matricNumber,
+          matricNumber: student.matric_number,
           sessions: sessionStatuses,
           attendancePercentage,
           marks,
@@ -97,17 +118,18 @@ export async function GET(request: NextRequest) {
       });
 
       return {
-        name: dept.name,
-        students,
+        name: dept?.name,
+        students: studentData,
       };
     });
 
     // Get semester name
     let semesterName = 'All Semesters';
     if (semesterId) {
-      const semester = await db.semester.findUnique({ where: { id: semesterId } });
+      const { data: semesters } = await db.from('semesters').select('*').eq('id', semesterId);
+      const semester = semesters?.[0] as Record<string, unknown> | undefined;
       if (semester) {
-        semesterName = semester.name;
+        semesterName = semester.name as string;
       }
     }
 

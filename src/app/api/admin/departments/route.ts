@@ -1,22 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 
 export async function GET() {
   try {
-    const departments = await db.department.findMany({
-      include: {
-        _count: {
-          select: { students: true },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
+    const { data: departments, error } = await db
+      .from('departments')
+      .select('*, students:students(id)')
+      .order('name', { ascending: true });
 
-    const data = departments.map((dept) => ({
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
+    const data = (departments || []).map((dept: Record<string, unknown>) => ({
       id: dept.id,
       name: dept.name,
       code: dept.code,
-      studentCount: dept._count.students,
+      studentCount: Array.isArray(dept.students) ? dept.students.length : 0,
     }));
 
     return NextResponse.json({ success: true, data });
@@ -40,22 +43,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existing = await db.department.findFirst({
-      where: {
-        OR: [{ name }, { code }],
-      },
-    });
+    // Check for existing department with same name or code
+    const { data: existing } = await db
+      .from('departments')
+      .select('id')
+      .or(`name.eq."${name}",code.eq."${code}"`);
 
-    if (existing) {
+    if (existing && existing.length > 0) {
       return NextResponse.json(
         { success: false, error: 'Department with this name or code already exists' },
         { status: 409 }
       );
     }
 
-    const department = await db.department.create({
-      data: { name, code },
-    });
+    const { data: departments, error } = await db
+      .from('departments')
+      .insert({ name, code })
+      .select();
+
+    if (error || !departments || departments.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create department' },
+        { status: 500 }
+      );
+    }
+
+    const department = departments[0] as Record<string, unknown>;
 
     return NextResponse.json({
       success: true,

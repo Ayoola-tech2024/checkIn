@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 import { hashPassword, generateDefaultPassword } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const { students } = await request.json() as {
+    const { students } = (await request.json()) as {
       students: { name: string; matricNumber: string; department: string }[];
     };
 
@@ -31,41 +31,49 @@ export async function POST(request: NextRequest) {
         }
 
         // Find or create department
-        let department = await db.department.findFirst({
-          where: {
-            OR: [{ name: row.department }, { code: row.department }],
-          },
-        });
+        const { data: existingDepts } = await db
+          .from('departments')
+          .select('*')
+          .or(`name.eq."${row.department}",code.eq."${row.department}"`);
+
+        let department: Record<string, unknown> | null = null;
+        if (existingDepts && existingDepts.length > 0) {
+          department = existingDepts[0] as Record<string, unknown>;
+        }
 
         if (!department) {
           const code = row.department.substring(0, 4).toUpperCase().replace(/\s/g, '');
-          department = await db.department.create({
-            data: {
-              name: row.department,
-              code,
-            },
-          });
+          const { data: newDepts } = await db
+            .from('departments')
+            .insert({ name: row.department, code })
+            .select();
+          department = (newDepts?.[0] as Record<string, unknown>) || null;
+        }
+
+        if (!department) {
+          skipped++;
+          errors.push(`Error: Could not create/find department for ${row.matricNumber}`);
+          continue;
         }
 
         // Check if student already exists
-        const existing = await db.student.findUnique({
-          where: { matricNumber: row.matricNumber },
-        });
+        const { data: existingStudents } = await db
+          .from('students')
+          .select('id')
+          .eq('matric_number', row.matricNumber);
 
-        if (existing) {
+        if (existingStudents && existingStudents.length > 0) {
           skipped++;
           errors.push(`Skipped: Student ${row.matricNumber} already exists`);
           continue;
         }
 
-        await db.student.create({
-          data: {
-            name: row.name,
-            matricNumber: row.matricNumber,
-            departmentId: department.id,
-            passwordHash,
-            activated: false,
-          },
+        await db.from('students').insert({
+          name: row.name,
+          matric_number: row.matricNumber,
+          department_id: department.id,
+          password_hash: passwordHash,
+          activated: false,
         });
 
         imported++;

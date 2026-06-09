@@ -1,37 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 
 export async function GET() {
   try {
-    const courses = await db.course.findMany({
-      include: {
-        lecturer: {
-          select: { id: true, name: true, email: true },
-        },
-        departments: {
-          include: {
-            department: {
-              select: { id: true, name: true, code: true },
-            },
-          },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
+    const { data: courses, error } = await db
+      .from('courses')
+      .select('*, lecturers(id, name, email)')
+      .order('name', { ascending: true });
 
-    const data = courses.map((c) => ({
-      id: c.id,
-      name: c.name,
-      code: c.code,
-      level: c.level,
-      lecturerId: c.lecturerId,
-      lecturerName: c.lecturer.name,
-      departments: c.departments.map((cd) => ({
-        id: cd.department.id,
-        name: cd.department.name,
-        code: cd.department.code,
-      })),
-    }));
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
+    // Fetch course_departments for all courses
+    const courseIds = (courses || []).map((c: Record<string, unknown>) => c.id);
+    const { data: courseDepts } = await db
+      .from('course_departments')
+      .select('*, departments(id, name, code)')
+      .in('course_id', courseIds.length > 0 ? courseIds : ['__none__']);
+
+    const courseDeptMap = new Map<string, Record<string, unknown>[]>();
+    for (const cd of courseDepts || []) {
+      const rec = cd as Record<string, unknown>;
+      const cid = rec.course_id as string;
+      if (!courseDeptMap.has(cid)) courseDeptMap.set(cid, []);
+      courseDeptMap.get(cid)!.push(rec);
+    }
+
+    const data = (courses || []).map((c: Record<string, unknown>) => {
+      const lecturer = c.lecturers as Record<string, unknown> | null;
+      const depts = courseDeptMap.get(c.id as string) || [];
+      return {
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        level: c.level,
+        lecturerId: c.lecturer_id,
+        lecturerName: lecturer?.name,
+        departments: depts.map((cd: Record<string, unknown>) => {
+          const dept = cd.departments as Record<string, unknown>;
+          return {
+            id: dept?.id,
+            name: dept?.name,
+            code: dept?.code,
+          };
+        }),
+      };
+    });
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
@@ -55,8 +73,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify lecturer exists
-    const lecturer = await db.lecturer.findUnique({ where: { id: lecturerId } });
-    if (!lecturer) {
+    const { data: lecturers } = await db.from('lecturers').select('id').eq('id', lecturerId);
+    if (!lecturers || lecturers.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Lecturer not found' },
         { status: 404 }
@@ -64,35 +82,54 @@ export async function POST(request: NextRequest) {
     }
 
     // Check unique code
-    const existingCourse = await db.course.findUnique({ where: { code } });
-    if (existingCourse) {
+    const { data: existingCourses } = await db.from('courses').select('id').eq('code', code);
+    if (existingCourses && existingCourses.length > 0) {
       return NextResponse.json(
         { success: false, error: 'Course with this code already exists' },
         { status: 409 }
       );
     }
 
-    const course = await db.course.create({
-      data: {
+    // Create the course
+    const { data: courses, error: courseError } = await db
+      .from('courses')
+      .insert({
         name,
         code,
         level,
-        lecturerId,
-        departments: {
-          create: departmentIds.map((departmentId: string) => ({
-            departmentId,
-          })),
-        },
-      },
-      include: {
-        lecturer: { select: { id: true, name: true, email: true } },
-        departments: {
-          include: {
-            department: { select: { id: true, name: true, code: true } },
-          },
-        },
-      },
-    });
+        lecturer_id: lecturerId,
+      })
+      .select();
+
+    if (courseError || !courses || courses.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create course' },
+        { status: 500 }
+      );
+    }
+
+    const course = courses[0] as Record<string, unknown>;
+
+    // Create course_department links
+    const courseDeptInserts = departmentIds.map((departmentId: string) => ({
+      course_id: course.id,
+      department_id: departmentId,
+    }));
+
+    await db.from('course_departments').insert(courseDeptInserts);
+
+    // Fetch lecturer info
+    const { data: lecturerData } = await db
+      .from('lecturers')
+      .select('id, name, email')
+      .eq('id', lecturerId);
+    const lecturer = (lecturerData?.[0] as Record<string, unknown>) || null;
+
+    // Fetch department info for linked departments
+    const { data: deptData } = await db
+      .from('departments')
+      .select('id, name, code')
+      .in('id', departmentIds);
 
     return NextResponse.json({
       success: true,
@@ -101,12 +138,12 @@ export async function POST(request: NextRequest) {
         name: course.name,
         code: course.code,
         level: course.level,
-        lecturerId: course.lecturerId,
-        lecturerName: course.lecturer.name,
-        departments: course.departments.map((cd) => ({
-          id: cd.department.id,
-          name: cd.department.name,
-          code: cd.department.code,
+        lecturerId: course.lecturer_id,
+        lecturerName: lecturer?.name,
+        departments: (deptData || []).map((d: Record<string, unknown>) => ({
+          id: d.id,
+          name: d.name,
+          code: d.code,
         })),
       },
     });

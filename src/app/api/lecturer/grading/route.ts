@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,30 +15,55 @@ export async function GET(request: NextRequest) {
     }
 
     // Get lecturer's courses
-    const courses = await db.course.findMany({
-      where: { lecturerId },
-      include: {
-        grading: {
-          where: semesterId ? { semesterId } : undefined,
-          include: {
-            semester: { select: { id: true, name: true } },
-          },
-        },
-      },
-    });
+    const { data: courses, error } = await db
+      .from('courses')
+      .select('*')
+      .eq('lecturer_id', lecturerId);
 
-    const data = courses.map((course) => ({
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
+    if (!courses || courses.length === 0) {
+      return NextResponse.json({ success: true, data: [] });
+    }
+
+    const courseIds = courses.map((c: Record<string, unknown>) => c.id as string);
+
+    // Fetch gradings for these courses
+    let gradingQuery = db.from('course_gradings').select('*, semesters(id, name)').in('course_id', courseIds);
+    if (semesterId) {
+      gradingQuery = gradingQuery.eq('semester_id', semesterId);
+    }
+    const { data: gradings } = await gradingQuery;
+
+    // Build grading map by course_id
+    const gradingMap = new Map<string, Record<string, unknown>[]>();
+    for (const g of gradings || []) {
+      const rec = g as Record<string, unknown>;
+      const cid = rec.course_id as string;
+      if (!gradingMap.has(cid)) gradingMap.set(cid, []);
+      gradingMap.get(cid)!.push(rec);
+    }
+
+    const data = courses.map((course: Record<string, unknown>) => ({
       courseId: course.id,
       courseName: course.name,
       courseCode: course.code,
       level: course.level,
-      grading: course.grading.map((g) => ({
-        id: g.id,
-        courseId: g.courseId,
-        semesterId: g.semesterId,
-        semesterName: g.semester.name,
-        totalMarks: g.totalMarks,
-      })),
+      grading: (gradingMap.get(course.id as string) || []).map((g: Record<string, unknown>) => {
+        const semester = g.semesters as Record<string, unknown> | null;
+        return {
+          id: g.id,
+          courseId: g.course_id,
+          semesterId: g.semester_id,
+          semesterName: semester?.name,
+          totalMarks: g.total_marks,
+        };
+      }),
     }));
 
     return NextResponse.json({ success: true, data });
@@ -63,8 +88,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify course exists
-    const course = await db.course.findUnique({ where: { id: courseId } });
-    if (!course) {
+    const { data: courses } = await db.from('courses').select('id').eq('id', courseId);
+    if (!courses || courses.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Course not found' },
         { status: 404 }
@@ -72,36 +97,76 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify semester exists
-    const semester = await db.semester.findUnique({ where: { id: semesterId } });
-    if (!semester) {
+    const { data: semesters } = await db.from('semesters').select('id').eq('id', semesterId);
+    if (!semesters || semesters.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Semester not found' },
         { status: 404 }
       );
     }
 
-    // Upsert grading
-    const grading = await db.courseGrading.upsert({
-      where: {
-        courseId_semesterId: { courseId, semesterId },
-      },
-      create: {
-        courseId,
-        semesterId,
-        totalMarks: parseFloat(totalMarks),
-      },
-      update: {
-        totalMarks: parseFloat(totalMarks),
-      },
-    });
+    // Try upsert: first try insert, if duplicate key then update
+    const { data: inserted, error: insertError } = await db
+      .from('course_gradings')
+      .insert({
+        course_id: courseId,
+        semester_id: semesterId,
+        total_marks: parseFloat(totalMarks),
+      })
+      .select();
+
+    if (insertError && insertError.message === 'DUPLICATE') {
+      // Update existing
+      const { data: updated, error: updateError } = await db
+        .from('course_gradings')
+        .update({ total_marks: parseFloat(totalMarks) })
+        .eq('course_id', courseId)
+        .eq('semester_id', semesterId);
+
+      if (updateError) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to update grading' },
+          { status: 500 }
+        );
+      }
+
+      const grading = (updated?.[0] as Record<string, unknown>) || {
+        course_id: courseId,
+        semester_id: semesterId,
+        total_marks: parseFloat(totalMarks),
+      };
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: grading.id,
+          courseId: grading.course_id,
+          semesterId: grading.semester_id,
+          totalMarks: grading.total_marks,
+        },
+      });
+    }
+
+    if (insertError) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create grading' },
+        { status: 500 }
+      );
+    }
+
+    const grading = (inserted?.[0] as Record<string, unknown>) || {
+      course_id: courseId,
+      semester_id: semesterId,
+      total_marks: parseFloat(totalMarks),
+    };
 
     return NextResponse.json({
       success: true,
       data: {
         id: grading.id,
-        courseId: grading.courseId,
-        semesterId: grading.semesterId,
-        totalMarks: grading.totalMarks,
+        courseId: grading.course_id,
+        semesterId: grading.semester_id,
+        totalMarks: grading.total_marks,
       },
     });
   } catch (error) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 import { hashPassword } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
@@ -14,8 +14,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if any admin already exists
-    const existingAdmin = await db.admin.findFirst();
-    if (existingAdmin) {
+    const { data: existingAdmins } = await db.from('admins').select('*').limit(1);
+    if (existingAdmins && existingAdmins.length > 0) {
       return NextResponse.json(
         { success: false, error: 'Admin account already exists. Only one admin can be initialized.' },
         { status: 409 }
@@ -23,13 +23,20 @@ export async function POST(request: NextRequest) {
     }
 
     const passwordHash = await hashPassword(password);
-    const admin = await db.admin.create({
-      data: {
-        name,
-        email,
-        passwordHash,
-      },
-    });
+    const { data: admins, error } = await db.from('admins').insert({
+      name,
+      email,
+      password_hash: passwordHash,
+    }).select();
+
+    if (error || !admins || admins.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create admin' },
+        { status: 500 }
+      );
+    }
+
+    const admin = admins[0] as Record<string, unknown>;
 
     return NextResponse.json({
       success: true,

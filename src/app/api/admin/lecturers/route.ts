@@ -1,27 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 
 export async function GET() {
   try {
-    const lecturers = await db.lecturer.findMany({
-      include: {
-        courses: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            level: true,
-          },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
+    const { data: lecturers, error } = await db
+      .from('lecturers')
+      .select('*, courses:courses(id, name, code, level)')
+      .order('name', { ascending: true });
 
-    const data = lecturers.map((l) => ({
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
+    const data = (lecturers || []).map((l: Record<string, unknown>) => ({
       id: l.id,
       name: l.name,
       email: l.email,
-      courses: l.courses,
+      courses: l.courses || [],
     }));
 
     return NextResponse.json({ success: true, data });
@@ -45,20 +43,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existing = await db.lecturer.findUnique({
-      where: { email },
-    });
+    const { data: existing } = await db
+      .from('lecturers')
+      .select('id')
+      .eq('email', email);
 
-    if (existing) {
+    if (existing && existing.length > 0) {
       return NextResponse.json(
         { success: false, error: 'Lecturer with this email already exists' },
         { status: 409 }
       );
     }
 
-    const lecturer = await db.lecturer.create({
-      data: { name, email },
-    });
+    const { data: lecturers, error } = await db
+      .from('lecturers')
+      .insert({ name, email })
+      .select();
+
+    if (error || !lecturers || lecturers.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create lecturer' },
+        { status: 500 }
+      );
+    }
+
+    const lecturer = lecturers[0] as Record<string, unknown>;
 
     return NextResponse.json({
       success: true,

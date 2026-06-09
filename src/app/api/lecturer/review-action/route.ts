@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,16 +19,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const attendance = await db.attendance.findUnique({
-      where: { id: attendanceId },
-    });
+    const { data: attendances } = await db
+      .from('attendances')
+      .select('*')
+      .eq('id', attendanceId);
 
-    if (!attendance) {
+    if (!attendances || attendances.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Attendance record not found' },
         { status: 404 }
       );
     }
+
+    const attendance = attendances[0] as Record<string, unknown>;
 
     if (attendance.status !== 'pending_review') {
       return NextResponse.json(
@@ -39,17 +42,31 @@ export async function POST(request: NextRequest) {
 
     const newStatus = action === 'approve' ? 'present' : 'rejected_identity';
 
-    const updatedAttendance = await db.attendance.update({
-      where: { id: attendanceId },
-      data: { status: newStatus },
-    });
+    const { data: updatedAttendances, error } = await db
+      .from('attendances')
+      .update({ status: newStatus })
+      .eq('id', attendanceId);
+
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to update attendance' },
+        { status: 500 }
+      );
+    }
+
+    const updatedAttendance = (updatedAttendances?.[0] as Record<string, unknown>) || {
+      id: attendanceId,
+      student_id: attendance.student_id,
+      session_id: attendance.session_id,
+      status: newStatus,
+    };
 
     return NextResponse.json({
       success: true,
       data: {
         id: updatedAttendance.id,
-        studentId: updatedAttendance.studentId,
-        sessionId: updatedAttendance.sessionId,
+        studentId: updatedAttendance.student_id,
+        sessionId: updatedAttendance.session_id,
         previousStatus: 'pending_review',
         status: updatedAttendance.status,
       },

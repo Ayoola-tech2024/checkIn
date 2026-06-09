@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,97 +13,136 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const session = await db.session.findUnique({
-      where: { id: sessionId },
-      include: {
-        course: { select: { id: true, name: true, code: true } },
-        venue: { select: { id: true, name: true } },
-        lecturer: { select: { id: true, name: true } },
-        departments: {
-          include: {
-            department: { select: { id: true, name: true, code: true } },
-          },
-        },
-        attendances: {
-          include: {
-            student: {
-              include: {
-                department: { select: { id: true, name: true } },
-              },
-            },
-          },
-        },
-      },
-    });
+    // Get session with related data
+    const { data: sessions, error: sessionError } = await db
+      .from('sessions')
+      .select('*')
+      .eq('id', sessionId);
 
-    if (!session) {
+    if (sessionError || !sessions || sessions.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Session not found' },
         { status: 404 }
       );
     }
 
-    // Count total target students
-    const deptIds = session.departments.map((d) => d.departmentId);
-    const totalTargetStudents = await db.student.count({
-      where: { departmentId: { in: deptIds } },
+    const session = sessions[0] as Record<string, unknown>;
+
+    // Fetch related data in parallel
+    const [
+      courseResult,
+      venueResult,
+      lecturerResult,
+      sessionDeptsResult,
+      attendancesResult,
+    ] = await Promise.all([
+      db.from('courses').select('id, name, code').eq('id', session.course_id as string),
+      db.from('venues').select('id, name').eq('id', session.venue_id as string),
+      db.from('lecturers').select('id, name').eq('id', session.lecturer_id as string),
+      db.from('session_departments').select('*, departments(id, name, code)').eq('session_id', sessionId),
+      db.from('attendances').select('*, students(id, name, matric_number, department_id)').eq('session_id', sessionId),
+    ]);
+
+    const course = courseResult.data?.[0] as Record<string, unknown> | undefined;
+    const venue = venueResult.data?.[0] as Record<string, unknown> | undefined;
+    const lecturer = lecturerResult.data?.[0] as Record<string, unknown> | undefined;
+
+    const deptLinks = (sessionDeptsResult.data || []) as Record<string, unknown>[];
+    const attendances = (attendancesResult.data || []) as Record<string, unknown>[];
+
+    // Get department IDs for counting target students
+    const deptIds = deptLinks.map((d: Record<string, unknown>) => {
+      const dept = d.departments as Record<string, unknown>;
+      return dept?.id || (d.department_id as string);
     });
 
+    // Count total target students
+    let totalTargetStudents = 0;
+    if (deptIds.length > 0) {
+      const { data: targetStudents } = await db
+        .from('students')
+        .select('id')
+        .in('department_id', deptIds);
+      totalTargetStudents = targetStudents?.length || 0;
+    }
+
+    // Need department info for students in attendances
+    const studentDeptIds = attendances.map((a: Record<string, unknown>) => {
+      const student = a.students as Record<string, unknown>;
+      return student?.department_id;
+    }).filter(Boolean) as string[];
+
+    let departmentMap = new Map<string, Record<string, unknown>>();
+    if (studentDeptIds.length > 0) {
+      const uniqueDeptIds = [...new Set(studentDeptIds)];
+      const { data: depts } = await db.from('departments').select('*').in('id', uniqueDeptIds);
+      for (const d of depts || []) {
+        departmentMap.set((d as Record<string, unknown>).id as string, d as Record<string, unknown>);
+      }
+    }
+
     // Calculate attendance stats
-    const attendances = session.attendances;
-    const presentCount = attendances.filter((a) => a.status === 'present').length;
-    const absentCount = attendances.filter((a) => a.status === 'absent').length;
+    const presentCount = attendances.filter((a: Record<string, unknown>) => a.status === 'present').length;
+    const absentCount = attendances.filter((a: Record<string, unknown>) => a.status === 'absent').length;
     const pendingCount = attendances.filter(
-      (a) => a.status === 'pending_review' || a.status === 'pending'
+      (a: Record<string, unknown>) => a.status === 'pending_review' || a.status === 'pending'
     ).length;
     const rejectedLocationCount = attendances.filter(
-      (a) => a.status === 'rejected_location'
+      (a: Record<string, unknown>) => a.status === 'rejected_location'
     ).length;
     const rejectedIdentityCount = attendances.filter(
-      (a) => a.status === 'rejected_identity'
+      (a: Record<string, unknown>) => a.status === 'rejected_identity'
     ).length;
     const rejectedCount = rejectedLocationCount + rejectedIdentityCount;
 
     // Late arrivals: checked in after session endsAt
-    const sessionEnd = session.endsAt
-      ? new Date(session.endsAt)
-      : session.startedAt
-        ? new Date(new Date(session.startedAt).getTime() + session.durationMinutes * 60000)
+    const sessionEnd = session.ends_at
+      ? new Date(session.ends_at as string)
+      : session.started_at
+        ? new Date(new Date(session.started_at as string).getTime() + (session.duration_minutes as number) * 60000)
         : null;
 
     const lateCount = sessionEnd
       ? attendances.filter(
-          (a) =>
+          (a: Record<string, unknown>) =>
             a.status === 'present' &&
-            a.checkInTime &&
-            new Date(a.checkInTime) > sessionEnd
+            a.check_in_time &&
+            new Date(a.check_in_time as string) > sessionEnd
         ).length
       : 0;
 
     // Detailed attendance list
-    const attendanceList = attendances.map((a) => ({
-      id: a.id,
-      studentId: a.studentId,
-      studentName: a.student.name,
-      matricNumber: a.student.matricNumber,
-      departmentName: a.student.department.name,
-      sessionId: a.sessionId,
-      status: a.status,
-      similarityScore: a.similarityScore,
-      checkInTime: a.checkInTime,
-      studentLat: a.studentLat,
-      studentLng: a.studentLng,
-    }));
+    const attendanceList = attendances.map((a: Record<string, unknown>) => {
+      const student = a.students as Record<string, unknown>;
+      const studentDept = departmentMap.get(student?.department_id as string);
+      return {
+        id: a.id,
+        studentId: a.student_id,
+        studentName: student?.name,
+        matricNumber: student?.matric_number,
+        departmentName: studentDept?.name,
+        sessionId: a.session_id,
+        status: a.status,
+        similarityScore: a.similarity_score,
+        checkInTime: a.check_in_time,
+        studentLat: a.student_lat,
+        studentLng: a.student_lng,
+      };
+    });
 
     // Absent students
     const absentStudents = attendances
-      .filter((a) => a.status === 'absent')
-      .map((a) => ({
-        id: a.studentId,
-        name: a.student.name,
-        matricNumber: a.student.matricNumber,
-        departmentName: a.student.department.name,
-      }));
+      .filter((a: Record<string, unknown>) => a.status === 'absent')
+      .map((a: Record<string, unknown>) => {
+        const student = a.students as Record<string, unknown>;
+        const studentDept = departmentMap.get(student?.department_id as string);
+        return {
+          id: a.student_id,
+          name: student?.name,
+          matricNumber: student?.matric_number,
+          departmentName: studentDept?.name,
+        };
+      });
 
     return NextResponse.json({
       success: true,
@@ -111,22 +150,25 @@ export async function GET(request: NextRequest) {
         session: {
           id: session.id,
           title: session.title,
-          courseName: session.course.name,
-          courseCode: session.course.code,
-          venueName: session.venue.name,
-          lecturerName: session.lecturer.name,
+          courseName: course?.name,
+          courseCode: course?.code,
+          venueName: venue?.name,
+          lecturerName: lecturer?.name,
           level: session.level,
-          distanceThreshold: session.distanceThreshold,
-          durationMinutes: session.durationMinutes,
-          scheduledAt: session.scheduledAt,
-          startedAt: session.startedAt,
-          endsAt: session.endsAt,
+          distanceThreshold: session.distance_threshold,
+          durationMinutes: session.duration_minutes,
+          scheduledAt: session.scheduled_at,
+          startedAt: session.started_at,
+          endsAt: session.ends_at,
           status: session.status,
-          departments: session.departments.map((d) => ({
-            id: d.department.id,
-            name: d.department.name,
-            code: d.department.code,
-          })),
+          departments: deptLinks.map((d: Record<string, unknown>) => {
+            const dept = d.departments as Record<string, unknown>;
+            return {
+              id: dept?.id,
+              name: dept?.name,
+              code: dept?.code,
+            };
+          }),
         },
         totalTargetStudents,
         presentCount,

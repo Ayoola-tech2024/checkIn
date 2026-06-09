@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 import { verifyPassword, generateDefaultPassword } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
@@ -27,14 +27,15 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      const admin = await db.admin.findUnique({ where: { email } });
-      if (!admin) {
+      const { data: admins, error } = await db.from('admins').select('*').eq('email', email);
+      if (error || !admins || admins.length === 0) {
         return NextResponse.json(
           { success: false, error: 'Invalid credentials' },
           { status: 401 }
         );
       }
-      const valid = await verifyPassword(password, admin.passwordHash);
+      const admin = admins[0] as Record<string, unknown>;
+      const valid = await verifyPassword(password, admin.password_hash as string);
       if (!valid) {
         return NextResponse.json(
           { success: false, error: 'Invalid credentials' },
@@ -59,24 +60,20 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      const lecturer = await db.lecturer.findUnique({
-        where: { email },
-        include: { courses: { include: { departments: { include: { department: true } } } } },
-      });
-      if (!lecturer) {
+      const { data: lecturers, error } = await db.from('lecturers').select('*, courses:courses(*)').eq('email', email);
+      if (error || !lecturers || lecturers.length === 0) {
         return NextResponse.json(
           { success: false, error: 'Invalid credentials' },
           { status: 401 }
         );
       }
+      const lecturer = lecturers[0] as Record<string, unknown>;
+
       // If lecturer has no password yet, set the default password on first login
-      if (!lecturer.passwordHash) {
+      if (!lecturer.password_hash) {
         const { hashPassword } = await import('@/lib/auth');
         const defaultHash = await hashPassword(generateDefaultPassword());
-        await db.lecturer.update({
-          where: { id: lecturer.id },
-          data: { passwordHash: defaultHash },
-        });
+        await db.from('lecturers').update({ password_hash: defaultHash }).eq('id', lecturer.id as string);
         // Verify with the default password
         const valid = await verifyPassword(password, defaultHash);
         if (!valid) {
@@ -86,7 +83,7 @@ export async function POST(request: NextRequest) {
           );
         }
       } else {
-        const valid = await verifyPassword(password, lecturer.passwordHash);
+        const valid = await verifyPassword(password, lecturer.password_hash as string);
         if (!valid) {
           return NextResponse.json(
             { success: false, error: 'Invalid credentials' },
@@ -94,6 +91,32 @@ export async function POST(request: NextRequest) {
           );
         }
       }
+
+      // Fetch course_departments with department info for each course
+      const lecturerCourses = (lecturer.courses as Record<string, unknown>[]) || [];
+      const coursesWithDepts = await Promise.all(
+        lecturerCourses.map(async (c) => {
+          const { data: courseDepts } = await db
+            .from('course_departments')
+            .select('*, departments(*)')
+            .eq('course_id', c.id as string);
+          return {
+            id: c.id,
+            name: c.name,
+            code: c.code,
+            level: c.level,
+            departments: (courseDepts || []).map((cd: Record<string, unknown>) => {
+              const dept = cd.departments as Record<string, unknown>;
+              return {
+                id: dept?.id,
+                name: dept?.name,
+                code: dept?.code,
+              };
+            }),
+          };
+        })
+      );
+
       return NextResponse.json({
         success: true,
         data: {
@@ -101,17 +124,7 @@ export async function POST(request: NextRequest) {
           name: lecturer.name,
           email: lecturer.email,
           role: 'lecturer',
-          courses: lecturer.courses.map((c) => ({
-            id: c.id,
-            name: c.name,
-            code: c.code,
-            level: c.level,
-            departments: c.departments.map((cd) => ({
-              id: cd.department.id,
-              name: cd.department.name,
-              code: cd.department.code,
-            })),
-          })),
+          courses: coursesWithDepts,
         },
       });
     }
@@ -125,17 +138,19 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      let student;
+      let student: Record<string, unknown> | null = null;
       if (matricNumber) {
-        student = await db.student.findUnique({
-          where: { matricNumber },
-          include: { department: true },
-        });
+        const { data: students } = await db
+          .from('students')
+          .select('*, departments(*)')
+          .eq('matric_number', matricNumber);
+        student = (students?.[0] as Record<string, unknown>) || null;
       } else if (email) {
-        student = await db.student.findUnique({
-          where: { email },
-          include: { department: true },
-        });
+        const { data: students } = await db
+          .from('students')
+          .select('*, departments(*)')
+          .eq('email', email);
+        student = (students?.[0] as Record<string, unknown>) || null;
       }
 
       if (!student) {
@@ -147,14 +162,11 @@ export async function POST(request: NextRequest) {
 
       // If student is not activated, they can still log in with the default password
       // to access the activation flow
-      if (!student.passwordHash) {
+      if (!student.password_hash) {
         // Auto-set default password for imported students who don't have one yet
         const { hashPassword } = await import('@/lib/auth');
         const defaultHash = await hashPassword(generateDefaultPassword());
-        await db.student.update({
-          where: { id: student.id },
-          data: { passwordHash: defaultHash },
-        });
+        await db.from('students').update({ password_hash: defaultHash }).eq('id', student.id as string);
         const valid = await verifyPassword(password, defaultHash);
         if (!valid) {
           return NextResponse.json(
@@ -163,7 +175,7 @@ export async function POST(request: NextRequest) {
           );
         }
       } else {
-        const valid = await verifyPassword(password, student.passwordHash);
+        const valid = await verifyPassword(password, student.password_hash as string);
         if (!valid) {
           return NextResponse.json(
             { success: false, error: 'Invalid credentials. Default password is CheckIn@2024' },
@@ -171,6 +183,9 @@ export async function POST(request: NextRequest) {
           );
         }
       }
+
+      const department = student.departments as Record<string, unknown> | null;
+
       return NextResponse.json({
         success: true,
         data: {
@@ -178,9 +193,9 @@ export async function POST(request: NextRequest) {
           name: student.name,
           email: student.email,
           role: 'student',
-          matricNumber: student.matricNumber,
-          departmentId: student.departmentId,
-          departmentName: student.department.name,
+          matricNumber: student.matric_number,
+          departmentId: student.department_id,
+          departmentName: department?.name,
           activated: student.activated,
         },
       });

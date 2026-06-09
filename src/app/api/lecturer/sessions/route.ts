@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,74 +13,112 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const sessions = await db.session.findMany({
-      where: { lecturerId },
-      include: {
-        course: { select: { id: true, name: true, code: true, level: true } },
-        venue: { select: { id: true, name: true } },
-        departments: {
-          include: {
-            department: { select: { id: true, name: true, code: true } },
-          },
-        },
-        _count: {
-          select: { attendances: true },
-        },
-      },
-      orderBy: { scheduledAt: 'desc' },
-    });
+    // Fetch sessions for this lecturer
+    const { data: sessions, error } = await db
+      .from('sessions')
+      .select('*')
+      .eq('lecturer_id', lecturerId)
+      .order('scheduled_at', { ascending: false });
 
-    // Get attendance counts by status for each session
-    const sessionIds = sessions.map((s) => s.id);
-
-    const attendanceCounts = await db.attendance.groupBy({
-      by: ['sessionId', 'status'],
-      where: { sessionId: { in: sessionIds } },
-      _count: { status: true },
-    });
-
-    const countMap = new Map<string, Record<string, number>>();
-    for (const ac of attendanceCounts) {
-      if (!countMap.has(ac.sessionId)) {
-        countMap.set(ac.sessionId, {});
-      }
-      const map = countMap.get(ac.sessionId)!;
-      map[ac.status] = ac._count.status;
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Internal server error' },
+        { status: 500 }
+      );
     }
 
-    // Count total target students per session
+    if (!sessions || sessions.length === 0) {
+      return NextResponse.json({ success: true, data: [] });
+    }
+
+    const sessionIds = sessions.map((s: Record<string, unknown>) => s.id);
+
+    // Fetch related data in parallel
+    const [coursesResult, venuesResult, sessionDeptsResult, attendancesResult] = await Promise.all([
+      db.from('courses').select('id, name, code, level').in('id', sessions.map((s: Record<string, unknown>) => s.course_id).filter(Boolean)),
+      db.from('venues').select('id, name').in('id', sessions.map((s: Record<string, unknown>) => s.venue_id).filter(Boolean)),
+      db.from('session_departments').select('*, departments(id, name, code)').in('session_id', sessionIds),
+      db.from('attendances').select('id, session_id, status').in('session_id', sessionIds),
+    ]);
+
+    const courseMap = new Map(
+      (coursesResult.data || []).map((c: Record<string, unknown>) => [c.id, c])
+    );
+    const venueMap = new Map(
+      (venuesResult.data || []).map((v: Record<string, unknown>) => [v.id, v])
+    );
+
+    // Build session_departments map
+    const sessionDeptMap = new Map<string, Record<string, unknown>[]>();
+    for (const sd of sessionDeptsResult.data || []) {
+      const rec = sd as Record<string, unknown>;
+      const sid = rec.session_id as string;
+      if (!sessionDeptMap.has(sid)) sessionDeptMap.set(sid, []);
+      sessionDeptMap.get(sid)!.push(rec);
+    }
+
+    // Build attendance counts map
+    const attendanceCountMap = new Map<string, Record<string, number>>();
+    const totalAttendanceMap = new Map<string, number>();
+    for (const a of attendancesResult.data || []) {
+      const rec = a as Record<string, unknown>;
+      const sid = rec.session_id as string;
+      const status = rec.status as string;
+      if (!attendanceCountMap.has(sid)) attendanceCountMap.set(sid, {});
+      const counts = attendanceCountMap.get(sid)!;
+      counts[status] = (counts[status] || 0) + 1;
+      totalAttendanceMap.set(sid, (totalAttendanceMap.get(sid) || 0) + 1);
+    }
+
+    // Count target students per session
     const data = await Promise.all(
-      sessions.map(async (session) => {
-        const deptIds = session.departments.map((d) => d.departmentId);
-        const totalTargetStudents = await db.student.count({
-          where: { departmentId: { in: deptIds } },
+      sessions.map(async (session: Record<string, unknown>) => {
+        const deptLinks = sessionDeptMap.get(session.id as string) || [];
+        const deptIds = deptLinks.map((d: Record<string, unknown>) => {
+          const dept = d.departments as Record<string, unknown>;
+          return dept?.id || (d.department_id as string);
         });
+
+        let totalTargetStudents = 0;
+        if (deptIds.length > 0) {
+          const { data: targetStudents } = await db
+            .from('students')
+            .select('id')
+            .in('department_id', deptIds);
+          totalTargetStudents = targetStudents?.length || 0;
+        }
+
+        const course = courseMap.get(session.course_id as string) as Record<string, unknown> | undefined;
+        const venue = venueMap.get(session.venue_id as string) as Record<string, unknown> | undefined;
 
         return {
           id: session.id,
           title: session.title,
-          courseId: session.courseId,
-          courseName: session.course.name,
-          courseCode: session.course.code,
-          venueId: session.venueId,
-          venueName: session.venue.name,
-          lecturerId: session.lecturerId,
+          courseId: session.course_id,
+          courseName: course?.name,
+          courseCode: course?.code,
+          venueId: session.venue_id,
+          venueName: venue?.name,
+          lecturerId: session.lecturer_id,
           level: session.level,
-          distanceThreshold: session.distanceThreshold,
-          durationMinutes: session.durationMinutes,
-          scheduledAt: session.scheduledAt,
-          startedAt: session.startedAt,
-          endsAt: session.endsAt,
+          distanceThreshold: session.distance_threshold,
+          durationMinutes: session.duration_minutes,
+          scheduledAt: session.scheduled_at,
+          startedAt: session.started_at,
+          endsAt: session.ends_at,
           status: session.status,
-          lecturerLat: session.lecturerLat,
-          lecturerLng: session.lecturerLng,
-          departments: session.departments.map((d) => ({
-            id: d.department.id,
-            name: d.department.name,
-            code: d.department.code,
-          })),
-          attendanceCounts: countMap.get(session.id) || {},
-          totalAttendances: session._count.attendances,
+          lecturerLat: session.lecturer_lat,
+          lecturerLng: session.lecturer_lng,
+          departments: deptLinks.map((d: Record<string, unknown>) => {
+            const dept = d.departments as Record<string, unknown>;
+            return {
+              id: dept?.id,
+              name: dept?.name,
+              code: dept?.code,
+            };
+          }),
+          attendanceCounts: attendanceCountMap.get(session.id as string) || {},
+          totalAttendances: totalAttendanceMap.get(session.id as string) || 0,
           totalTargetStudents,
         };
       })
@@ -123,44 +161,43 @@ export async function POST(request: NextRequest) {
     const sessionEnd = new Date(scheduledDate.getTime() + duration * 60000);
 
     // ===== VALIDATION: Venue concurrency guardrail =====
-    const conflictingVenueSessions = await db.session.findMany({
-      where: {
-        venueId,
-        status: { in: ['scheduled', 'active'] },
-        scheduledAt: {
-          lt: sessionEnd,
-        },
-        // Session ends after our start
-        // We need: scheduledAt + durationMinutes > scheduledDate
-        // This means: we need sessions where their scheduledAt < sessionEnd
-        // AND their scheduledAt + durationMinutes > scheduledDate
-      },
-      include: {
-        course: { select: { name: true, code: true } },
-        venue: { select: { name: true } },
-      },
-    });
+    const { data: venueSessions } = await db
+      .from('sessions')
+      .select('*')
+      .eq('venue_id', venueId)
+      .or('status.eq.scheduled,status.eq.active');
 
     // Filter for actual time overlap
-    const venueConflicts = conflictingVenueSessions.filter((s) => {
-      const existingStart = new Date(s.scheduledAt);
-      const existingEnd = new Date(existingStart.getTime() + s.durationMinutes * 60000);
+    const venueConflicts = (venueSessions || []).filter((s: Record<string, unknown>) => {
+      const existingStart = new Date(s.scheduled_at as string);
+      const existingEnd = new Date(existingStart.getTime() + (s.duration_minutes as number) * 60000);
       return existingEnd > scheduledDate && existingStart < sessionEnd;
     });
 
     if (venueConflicts.length > 0) {
+      // Fetch course names for conflicts
+      const conflictCourseIds = venueConflicts.map((s: Record<string, unknown>) => s.course_id as string);
+      const { data: conflictCourses } = await db.from('courses').select('id, name, code').in('id', conflictCourseIds);
+
+      const courseMap = new Map(
+        (conflictCourses || []).map((c: Record<string, unknown>) => [c.id, c])
+      );
+
       return NextResponse.json(
         {
           success: false,
           error: 'Venue is already booked for the requested time window',
           data: {
-            conflicts: venueConflicts.map((s) => ({
-              id: s.id,
-              title: s.title,
-              courseName: s.course.name,
-              scheduledAt: s.scheduledAt,
-              durationMinutes: s.durationMinutes,
-            })),
+            conflicts: venueConflicts.map((s: Record<string, unknown>) => {
+              const course = courseMap.get(s.course_id as string) as Record<string, unknown> | undefined;
+              return {
+                id: s.id,
+                title: s.title,
+                courseName: course?.name,
+                scheduledAt: s.scheduled_at,
+                durationMinutes: s.duration_minutes,
+              };
+            }),
           },
         },
         { status: 409 }
@@ -168,59 +205,67 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== VALIDATION: Department concurrency guardrail =====
-    const conflictingDeptSessions = await db.sessionDepartment.findMany({
-      where: {
-        departmentId: { in: departmentIds },
-        session: {
-          status: { in: ['scheduled', 'active'] },
-          scheduledAt: {
-            lt: sessionEnd,
-          },
-        },
-      },
-      include: {
-        session: {
-          include: {
-            course: { select: { name: true, code: true } },
-            departments: {
-              include: {
-                department: { select: { name: true } },
-              },
-            },
-          },
-        },
-        department: { select: { name: true } },
-      },
-    });
+    const { data: deptSessionLinks } = await db
+      .from('session_departments')
+      .select('*, sessions(*), departments(name)')
+      .in('department_id', departmentIds);
 
-    // Filter for actual time overlap
-    const deptConflicts = conflictingDeptSessions.filter((sd) => {
-      const existingStart = new Date(sd.session.scheduledAt);
-      const existingEnd = new Date(existingStart.getTime() + sd.session.durationMinutes * 60000);
-      return existingEnd > scheduledDate && existingStart < sessionEnd;
-    });
+    // Filter for sessions that are scheduled or active and overlap
+    const deptConflicts: Record<string, unknown>[] = [];
+    const seenSessionIds = new Set<string>();
 
-    // Deduplicate by session ID
-    const uniqueDeptConflicts = Array.from(
-      new Map(deptConflicts.map((sd) => [sd.session.id, sd])).values()
-    );
+    for (const dsl of deptSessionLinks || []) {
+      const rec = dsl as Record<string, unknown>;
+      const session = rec.sessions as Record<string, unknown>;
+      if (!session) continue;
+      if (session.status !== 'scheduled' && session.status !== 'active') continue;
+      if (seenSessionIds.has(session.id as string)) continue;
 
-    if (uniqueDeptConflicts.length > 0) {
+      const existingStart = new Date(session.scheduled_at as string);
+      const existingEnd = new Date(existingStart.getTime() + (session.duration_minutes as number) * 60000);
+      if (existingEnd > scheduledDate && existingStart < sessionEnd) {
+        seenSessionIds.add(session.id as string);
+        deptConflicts.push(rec);
+      }
+    }
+
+    if (deptConflicts.length > 0) {
+      // Fetch course info for conflict sessions
+      const conflictSessionIds = deptConflicts.map((sd: Record<string, unknown>) => (sd.sessions as Record<string, unknown>)?.id).filter(Boolean) as string[];
+      const { data: conflictCourses } = await db.from('courses').select('id, name, code').in('id', deptConflicts.map((sd: Record<string, unknown>) => ((sd.sessions as Record<string, unknown>)?.course_id)).filter(Boolean));
+
+      // Get all session_departments for conflict sessions
+      const { data: conflictSessionDepts } = await db
+        .from('session_departments')
+        .select('*, departments(name)')
+        .in('session_id', conflictSessionIds);
+
+      const courseMap = new Map(
+        (conflictCourses || []).map((c: Record<string, unknown>) => [c.id, c])
+      );
+
       return NextResponse.json(
         {
           success: false,
           error: 'One or more departments are already booked for the requested time window',
           data: {
-            conflicts: uniqueDeptConflicts.map((sd) => ({
-              id: sd.session.id,
-              title: sd.session.title,
-              courseName: sd.session.course.name,
-              scheduledAt: sd.session.scheduledAt,
-              durationMinutes: sd.session.durationMinutes,
-              conflictingDepartments: sd.session.departments
-                .filter((d) => departmentIds.includes(d.departmentId))
-                .map((d) => d.department.name),
-            })),
+            conflicts: deptConflicts.map((sd: Record<string, unknown>) => {
+              const session = sd.sessions as Record<string, unknown>;
+              const course = courseMap.get(session?.course_id as string) as Record<string, unknown> | undefined;
+              // Find conflicting department names
+              const conflictingDepts = (conflictSessionDepts || [])
+                .filter((csd: Record<string, unknown>) => csd.session_id === session?.id && departmentIds.includes(csd.department_id))
+                .map((csd: Record<string, unknown>) => (csd.departments as Record<string, unknown>)?.name);
+
+              return {
+                id: session?.id,
+                title: session?.title,
+                courseName: course?.name,
+                scheduledAt: session?.scheduled_at,
+                durationMinutes: session?.duration_minutes,
+                conflictingDepartments: conflictingDepts,
+              };
+            }),
           },
         },
         { status: 409 }
@@ -228,57 +273,77 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the session
-    const session = await db.session.create({
-      data: {
+    const { data: sessions, error: sessionError } = await db
+      .from('sessions')
+      .insert({
         title,
-        courseId,
-        venueId,
-        lecturerId,
+        course_id: courseId,
+        venue_id: venueId,
+        lecturer_id: lecturerId,
         level,
-        distanceThreshold: threshold,
-        durationMinutes: duration,
-        scheduledAt: scheduledDate,
-        departments: {
-          create: departmentIds.map((departmentId: string) => ({
-            departmentId,
-          })),
-        },
-      },
-      include: {
-        course: { select: { id: true, name: true, code: true } },
-        venue: { select: { id: true, name: true } },
-        lecturer: { select: { id: true, name: true } },
-        departments: {
-          include: {
-            department: { select: { id: true, name: true, code: true } },
-          },
-        },
-      },
-    });
+        distance_threshold: threshold,
+        duration_minutes: duration,
+        scheduled_at: scheduledDate.toISOString(),
+      })
+      .select();
+
+    if (sessionError || !sessions || sessions.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create session' },
+        { status: 500 }
+      );
+    }
+
+    const session = sessions[0] as Record<string, unknown>;
+
+    // Create session_department links
+    const sessionDeptInserts = departmentIds.map((departmentId: string) => ({
+      session_id: session.id,
+      department_id: departmentId,
+    }));
+
+    await db.from('session_departments').insert(sessionDeptInserts);
+
+    // Fetch related data for response
+    const [courseResult, venueResult, lecturerResult] = await Promise.all([
+      db.from('courses').select('id, name, code').eq('id', courseId),
+      db.from('venues').select('id, name').eq('id', venueId),
+      db.from('lecturers').select('id, name').eq('id', lecturerId),
+    ]);
+
+    const course = courseResult.data?.[0] as Record<string, unknown> | undefined;
+    const venue = venueResult.data?.[0] as Record<string, unknown> | undefined;
+    const lecturer = lecturerResult.data?.[0] as Record<string, unknown> | undefined;
+
+    // Fetch departments for the session
+    const { data: deptData } = await db
+      .from('departments')
+      .select('id, name, code')
+      .in('id', departmentIds);
 
     return NextResponse.json({
       success: true,
       data: {
         id: session.id,
         title: session.title,
-        courseId: session.courseId,
-        courseName: session.course.name,
-        courseCode: session.course.code,
-        venueId: session.venueId,
-        venueName: session.venue.name,
-        lecturerId: session.lecturerId,
-        lecturerName: session.lecturer.name,
+        courseId: session.course_id,
+        courseName: course?.name,
+        courseCode: course?.code,
+        venueId: session.venue_id,
+        venueName: venue?.name,
+        lecturerId: session.lecturer_id,
+        lecturerName: lecturer?.name,
         level: session.level,
-        distanceThreshold: session.distanceThreshold,
-        durationMinutes: session.durationMinutes,
-        scheduledAt: session.scheduledAt,
-        startedAt: session.startedAt,
-        endsAt: session.endsAt,
+        distanceThreshold: session.distance_threshold,
+        durationMinutes: session.duration_minutes,
+        scheduledAt: session.scheduled_at,
+        startedAt: session.started_at,
+        endsAt: session.ends_at,
         status: session.status,
-        departments: session.departments.map((d) => ({
-          id: d.department.id,
-          name: d.department.name,
-          code: d.department.code,
+        departments: (deptData || []).map((d: Record<string, unknown>) => ({
+          id: d.id,
+          name: d.name,
+          code: d.code,
         })),
       },
     });

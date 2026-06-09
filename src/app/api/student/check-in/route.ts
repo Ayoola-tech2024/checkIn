@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 import { haversineDistance } from '@/lib/geo';
 import { calculateSimilarity, getAttendanceStatusFromSimilarity } from '@/lib/face-utils';
 
@@ -22,16 +22,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the student
-    const student = await db.student.findUnique({
-      where: { id: studentId },
-    });
+    const { data: students } = await db.from('students').select('*').eq('id', studentId);
 
-    if (!student) {
+    if (!students || students.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Student not found' },
         { status: 404 }
       );
     }
+
+    const student = students[0] as Record<string, unknown>;
 
     if (!student.activated) {
       return NextResponse.json(
@@ -41,16 +41,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the session
-    const session = await db.session.findUnique({
-      where: { id: sessionId },
-    });
+    const { data: sessions } = await db.from('sessions').select('*').eq('id', sessionId);
 
-    if (!session) {
+    if (!sessions || sessions.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Session not found' },
         { status: 404 }
       );
     }
+
+    const session = sessions[0] as Record<string, unknown>;
 
     if (session.status !== 'active') {
       return NextResponse.json(
@@ -60,11 +60,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already checked in
-    const existingAttendance = await db.attendance.findUnique({
-      where: {
-        studentId_sessionId: { studentId, sessionId },
-      },
-    });
+    const { data: existingAttendances } = await db
+      .from('attendances')
+      .select('*')
+      .eq('student_id', studentId)
+      .eq('session_id', sessionId);
+
+    const existingAttendance = existingAttendances?.[0] as Record<string, unknown> | undefined;
 
     if (existingAttendance && (existingAttendance.status === 'present' || existingAttendance.status === 'pending_review')) {
       return NextResponse.json({
@@ -72,13 +74,13 @@ export async function POST(request: NextRequest) {
         error: 'Already checked in for this session',
         data: {
           status: existingAttendance.status,
-          similarityScore: existingAttendance.similarityScore,
+          similarityScore: existingAttendance.similarity_score,
         },
       }, { status: 409 });
     }
 
     // ===== TIER 1: Location Validation =====
-    if (session.lecturerLat === null || session.lecturerLng === null) {
+    if (session.lecturer_lat === null || session.lecturer_lng === null) {
       return NextResponse.json(
         { success: false, error: 'Session location not available. Lecturer has not started the session properly.' },
         { status: 400 }
@@ -88,51 +90,59 @@ export async function POST(request: NextRequest) {
     const distance = haversineDistance(
       studentLat,
       studentLng,
-      session.lecturerLat,
-      session.lecturerLng
+      session.lecturer_lat as number,
+      session.lecturer_lng as number
     );
 
-    const isWithinLocation = distance <= session.distanceThreshold;
+    const isWithinLocation = distance <= (session.distance_threshold as number);
 
     if (!isWithinLocation) {
       // Create/update attendance with rejected_location
-      const attendance = await db.attendance.upsert({
-        where: {
-          studentId_sessionId: { studentId, sessionId },
-        },
-        create: {
-          studentId,
-          sessionId,
-          status: 'rejected_location',
-          studentLat,
-          studentLng,
-          selfieData: selfieData || null,
-          checkInTime: new Date(),
-        },
-        update: {
-          status: 'rejected_location',
-          studentLat,
-          studentLng,
-          selfieData: selfieData || null,
-          checkInTime: new Date(),
-        },
-      });
+      const now = new Date().toISOString();
+      const attendanceData = {
+        status: 'rejected_location',
+        student_lat: studentLat,
+        student_lng: studentLng,
+        selfie_data: selfieData || null,
+        check_in_time: now,
+      };
+
+      let attendance: Record<string, unknown>;
+      if (existingAttendance) {
+        // Update existing
+        const { data: updated } = await db
+          .from('attendances')
+          .update(attendanceData)
+          .eq('id', existingAttendance.id as string);
+        attendance = (updated?.[0] as Record<string, unknown>) || { id: existingAttendance.id };
+      } else {
+        // Insert new
+        const { data: inserted } = await db
+          .from('attendances')
+          .insert({
+            student_id: studentId,
+            session_id: sessionId,
+            ...attendanceData,
+          })
+          .select();
+        attendance = (inserted?.[0] as Record<string, unknown>) || { id: 'unknown' };
+      }
 
       return NextResponse.json({
         success: false,
-        error: `You are too far from the session venue. Distance: ${distance.toFixed(1)}m, required: within ${session.distanceThreshold}m`,
+        error: `You are too far from the session venue. Distance: ${distance.toFixed(1)}m, required: within ${session.distance_threshold}m`,
         data: {
           stage: 'location',
           status: 'rejected_location',
           distance: Math.round(distance * 100) / 100,
-          threshold: session.distanceThreshold,
+          threshold: session.distance_threshold,
           attendanceId: attendance.id,
         },
       }, { status: 403 });
     }
 
     // ===== TIER 2: Facial Recognition Validation =====
-    if (!student.facialData) {
+    if (!student.facial_data) {
       return NextResponse.json(
         { success: false, error: 'No facial data on file. Please re-activate your account.' },
         { status: 400 }
@@ -141,7 +151,7 @@ export async function POST(request: NextRequest) {
 
     let storedDescriptor: number[];
     try {
-      const facialObj = JSON.parse(student.facialData);
+      const facialObj = JSON.parse(student.facial_data as string);
       storedDescriptor = facialObj.descriptor || facialObj;
     } catch {
       return NextResponse.json(
@@ -153,29 +163,36 @@ export async function POST(request: NextRequest) {
     const similarityScore = calculateSimilarity(storedDescriptor, facialDescriptor);
     const { status: attendanceStatus } = getAttendanceStatusFromSimilarity(similarityScore);
 
-    const attendance = await db.attendance.upsert({
-      where: {
-        studentId_sessionId: { studentId, sessionId },
-      },
-      create: {
-        studentId,
-        sessionId,
-        status: attendanceStatus,
-        similarityScore,
-        studentLat,
-        studentLng,
-        selfieData: selfieData || null,
-        checkInTime: new Date(),
-      },
-      update: {
-        status: attendanceStatus,
-        similarityScore,
-        studentLat,
-        studentLng,
-        selfieData: selfieData || null,
-        checkInTime: new Date(),
-      },
-    });
+    const now = new Date().toISOString();
+    const attendanceData = {
+      status: attendanceStatus,
+      similarity_score: similarityScore,
+      student_lat: studentLat,
+      student_lng: studentLng,
+      selfie_data: selfieData || null,
+      check_in_time: now,
+    };
+
+    let attendance: Record<string, unknown>;
+    if (existingAttendance) {
+      // Update existing
+      const { data: updated } = await db
+        .from('attendances')
+        .update(attendanceData)
+        .eq('id', existingAttendance.id as string);
+      attendance = (updated?.[0] as Record<string, unknown>) || { id: existingAttendance.id };
+    } else {
+      // Insert new
+      const { data: inserted } = await db
+        .from('attendances')
+        .insert({
+          student_id: studentId,
+          session_id: sessionId,
+          ...attendanceData,
+        })
+        .select();
+      attendance = (inserted?.[0] as Record<string, unknown>) || { id: 'unknown' };
+    }
 
     const stage = attendanceStatus === 'present' ? 'complete' : 'biometric';
 

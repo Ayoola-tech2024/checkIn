@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/insforge';
 import { hashPassword } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
@@ -13,16 +13,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const student = await db.student.findUnique({
-      where: { id: studentId },
-    });
+    const { data: students } = await db.from('students').select('*').eq('id', studentId);
 
-    if (!student) {
+    if (!students || students.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Student not found' },
         { status: 404 }
       );
     }
+
+    const student = students[0] as Record<string, unknown>;
 
     if (student.activated) {
       return NextResponse.json(
@@ -32,12 +32,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if email is already used by another student
-    const emailExists = await db.student.findFirst({
-      where: {
-        email,
-        NOT: { id: studentId },
-      },
-    });
+    const { data: emailStudents } = await db
+      .from('students')
+      .select('id')
+      .eq('email', email);
+
+    const emailExists = (emailStudents || []).some(
+      (s: Record<string, unknown>) => s.id !== studentId
+    );
 
     if (emailExists) {
       return NextResponse.json(
@@ -53,28 +55,33 @@ export async function POST(request: NextRequest) {
       ? facialData
       : JSON.stringify(facialData);
 
-    const updatedStudent = await db.student.update({
-      where: { id: studentId },
-      data: {
-        email,
-        passwordHash,
-        facialData: facialDataString,
-        selfieData: selfieData || null,
-        activated: true,
-      },
-      include: { department: true },
-    });
+    await db.from('students').update({
+      email,
+      password_hash: passwordHash,
+      facial_data: facialDataString,
+      selfie_data: selfieData || null,
+      activated: true,
+    }).eq('id', studentId);
+
+    // Fetch updated student with department
+    const { data: updatedStudents } = await db
+      .from('students')
+      .select('*, departments(*)')
+      .eq('id', studentId);
+
+    const updatedStudent = updatedStudents?.[0] as Record<string, unknown> | undefined;
+    const department = updatedStudent?.departments as Record<string, unknown> | null;
 
     return NextResponse.json({
       success: true,
       data: {
-        id: updatedStudent.id,
-        name: updatedStudent.name,
-        email: updatedStudent.email,
-        matricNumber: updatedStudent.matricNumber,
-        departmentId: updatedStudent.departmentId,
-        departmentName: updatedStudent.department.name,
-        activated: updatedStudent.activated,
+        id: updatedStudent?.id || studentId,
+        name: updatedStudent?.name || student.name,
+        email: updatedStudent?.email || email,
+        matricNumber: updatedStudent?.matric_number || student.matric_number,
+        departmentId: updatedStudent?.department_id || student.department_id,
+        departmentName: department?.name,
+        activated: true,
       },
     });
   } catch (error) {
