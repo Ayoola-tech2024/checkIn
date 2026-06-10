@@ -1,14 +1,15 @@
 // ============================================================
-// checkIn - Face Capture Component (Robust with Multiple Fallbacks)
+// checkIn - Face Capture Component (Robust with Multiple Input Methods)
 // ============================================================
 
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, AlertTriangle, CheckCircle2, Loader2, X, RotateCcw, WifiOff } from 'lucide-react';
+import { Camera, AlertTriangle, CheckCircle2, Loader2, X, RotateCcw, Upload, ImagePlus, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 import { MAX_SELFIE_SIZE_KB } from '@/lib/constants';
 
 interface FaceCaptureProps {
@@ -16,6 +17,8 @@ interface FaceCaptureProps {
   mode: 'activation' | 'checkin';
   onError: (error: string) => void;
 }
+
+type CaptureMethod = 'camera' | 'upload' | 'demo';
 
 type DetectionStatus =
   | 'idle'
@@ -34,9 +37,11 @@ let modelLoadPromise: Promise<boolean> | null = null;
 export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('camera');
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [detectionStatus, setDetectionStatus] = useState<DetectionStatus>('idle');
@@ -45,17 +50,16 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
   const [capturing, setCapturing] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [modelLoadingMsg, setModelLoadingMsg] = useState('Initializing...');
+  const [uploadedPreview, setUploadedPreview] = useState<string | null>(null);
 
   // ─── Load face-api.js models ────────────────────────────────
   const loadModels = useCallback(async (): Promise<boolean> => {
-    // If already loaded, return immediately
     if (modelsLoaded && faceApiModule) {
       setFaceApiLoaded(true);
       setUseImageHash(false);
       return true;
     }
 
-    // If already loading, wait for that promise
     if (modelLoadPromise) {
       return modelLoadPromise;
     }
@@ -72,7 +76,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
         setModelLoadingMsg('Loading face detection model (attempt 1)...');
         console.log('[FaceCapture] Loading TinyFaceDetector model...');
 
-        // Try TinyFaceDetector first (much smaller ~200KB vs ~5MB for ssd)
         try {
           await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
           console.log('[FaceCapture] TinyFaceDetector loaded successfully');
@@ -99,7 +102,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
             console.log('[FaceCapture] FaceLandmark68TinyNet loaded successfully');
           } catch (lmTinyErr) {
             console.error('[FaceCapture] All landmark models failed', lmTinyErr);
-            // Continue without landmarks - we just need detection + recognition
           }
         }
 
@@ -122,7 +124,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     })();
 
     const result = await modelLoadPromise;
-    // Reset the promise so future calls can retry if it failed
     if (!result) {
       modelLoadPromise = null;
     }
@@ -156,7 +157,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
 
       video.srcObject = stream;
 
-      // Wait for video to actually be playing
       await new Promise<void>((resolve, reject) => {
         const onCanPlay = () => {
           video.removeEventListener('canplay', onCanPlay);
@@ -175,8 +175,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
         video.addEventListener('canplay', onCanPlay);
         video.addEventListener('loadeddata', onLoadedData);
         video.addEventListener('error', onError);
-
-        // Fallback timeout - if video doesn't fire events in 5s, try play anyway
         setTimeout(() => {
           video.removeEventListener('canplay', onCanPlay);
           video.removeEventListener('loadeddata', onLoadedData);
@@ -226,13 +224,15 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     let cancelled = false;
 
     async function init() {
-      // Load models and start camera in parallel
-      const [,] = await Promise.all([
-        loadModels(),
-        startCamera(),
-      ]);
+      // Load models regardless of method (needed for processing uploaded photos too)
+      await loadModels();
 
       if (cancelled) return;
+
+      // Only start camera if camera method is selected
+      if (captureMethod === 'camera') {
+        await startCamera();
+      }
     }
 
     init();
@@ -243,9 +243,18 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     };
   }, []);
 
+  // ─── Switch capture method ─────────────────────────────────
+  useEffect(() => {
+    if (captureMethod === 'camera' && !cameraReady && !cameraError) {
+      startCamera();
+    } else if (captureMethod !== 'camera') {
+      stopCamera();
+    }
+  }, [captureMethod]);
+
   // ─── Periodic face detection (only when camera & models ready) ──
   useEffect(() => {
-    if (!cameraReady || !faceApiLoaded || !faceApiModule) return;
+    if (!cameraReady || !faceApiLoaded || !faceApiModule || captureMethod !== 'camera') return;
 
     let cancelled = false;
 
@@ -256,12 +265,10 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
         const faceapi = faceApiModule;
         const video = videoRef.current;
 
-        // Ensure video has valid dimensions
         if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
         let detection;
 
-        // Try TinyFaceDetector first (faster), fall back to SsdMobilenetv1
         if (faceapi.nets.tinyFaceDetector.isLoaded) {
           detection = await faceapi
             .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 }));
@@ -285,7 +292,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
       }
     }
 
-    // Run detection every 1.5 seconds
     detectFace();
     detectionIntervalRef.current = setInterval(detectFace, 1500);
 
@@ -296,7 +302,7 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
         detectionIntervalRef.current = null;
       }
     };
-  }, [cameraReady, faceApiLoaded]);
+  }, [cameraReady, faceApiLoaded, captureMethod]);
 
   // ─── Compress image to under MAX_SELFIE_SIZE_KB ──────────
   const compressImage = useCallback((canvas: HTMLCanvasElement): string => {
@@ -308,7 +314,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
       dataUrl = canvas.toDataURL('image/jpeg', quality);
     }
 
-    // If still too large, resize canvas
     if (dataUrl.length * 0.75 > MAX_SELFIE_SIZE_KB * 1024) {
       const scale = 0.75;
       const resizeCanvas = document.createElement('canvas');
@@ -325,12 +330,7 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
   }, []);
 
   // ─── Generate deterministic descriptor from image data ────
-  // This fallback creates a consistent descriptor from the actual pixel data
-  // by creating a small thumbnail of the face region and computing a perceptual hash.
-  // Same person = similar thumbnail = similar descriptor
   const generateImageHashDescriptor = useCallback((canvas: HTMLCanvasElement, faceBox?: { x: number; y: number; width: number; height: number }): number[] => {
-    // Create a small 8x16 thumbnail of the face region
-    // This normalizes position/scale, making the hash robust to small movements
     const thumbW = 8;
     const thumbH = 16;
     const thumbCanvas = document.createElement('canvas');
@@ -340,37 +340,29 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
 
     if (!thumbCtx) return Array.from({ length: 128 }, () => 0);
 
-    // Determine source region - use face box if available, otherwise center crop
     let sx: number, sy: number, sw: number, sh: number;
     if (faceBox) {
-      // Add 20% padding around the detected face
       const pad = Math.max(faceBox.width, faceBox.height) * 0.2;
       sx = Math.max(0, faceBox.x - pad);
       sy = Math.max(0, faceBox.y - pad);
       sw = Math.min(canvas.width - sx, faceBox.width + pad * 2);
       sh = Math.min(canvas.height - sy, faceBox.height + pad * 2);
     } else {
-      // Center crop focusing on the face region (top 60% of image, center 50%)
       sx = Math.floor(canvas.width * 0.25);
       sy = Math.floor(canvas.height * 0.1);
       sw = Math.floor(canvas.width * 0.5);
       sh = Math.floor(canvas.height * 0.65);
     }
 
-    // Draw the face region as a small thumbnail
     thumbCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, thumbW, thumbH);
 
-    // Get the thumbnail pixel data
     const imageData = thumbCtx.getImageData(0, 0, thumbW, thumbH);
     const pixels = imageData.data;
 
-    // Create 128-float descriptor from thumbnail pixels
-    // thumbW * thumbH = 128 pixels, each contributes one luminance value
     const descriptor: number[] = [];
     for (let i = 0; i < 128; i++) {
       const offset = i * 4;
       if (offset + 2 < pixels.length) {
-        // Compute luminance and normalize to [-1, 1]
         const r = pixels[offset] / 255;
         const g = pixels[offset + 1] / 255;
         const b = pixels[offset + 2] / 255;
@@ -381,8 +373,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
       }
     }
 
-    // Apply DCT-like transformation for better perceptual hashing
-    // This makes the descriptor more robust to small pixel changes
     const transformed: number[] = [];
     for (let k = 0; k < 128; k++) {
       let sum = 0;
@@ -392,7 +382,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
       transformed.push(sum / 128);
     }
 
-    // Normalize the descriptor to unit length
     const magnitude = Math.sqrt(transformed.reduce((sum, v) => sum + v * v, 0));
     if (magnitude > 0) {
       for (let i = 0; i < transformed.length; i++) {
@@ -403,8 +392,102 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     return transformed;
   }, []);
 
-  // ─── Handle capture ──────────────────────────────────────
-  const handleCapture = useCallback(async () => {
+  // ─── Process an image (from camera or upload) through face-api ───
+  const processImage = useCallback(async (imageSource: HTMLCanvasElement | HTMLImageElement): Promise<{ selfieData: string; facialDescriptor: number[] } | null> => {
+    const canvas = document.createElement('canvas');
+    const width = imageSource instanceof HTMLVideoElement ? (imageSource.videoWidth || 640) :
+                  imageSource instanceof HTMLCanvasElement ? imageSource.width :
+                  imageSource.naturalWidth || imageSource.width;
+    const height = imageSource instanceof HTMLVideoElement ? (imageSource.videoHeight || 480) :
+                   imageSource instanceof HTMLCanvasElement ? imageSource.height :
+                   imageSource.naturalHeight || imageSource.height;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Draw image to canvas
+    if (imageSource instanceof HTMLVideoElement) {
+      // Mirror for selfie
+      ctx.save();
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(imageSource, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    } else {
+      ctx.drawImage(imageSource, 0, 0, canvas.width, canvas.height);
+    }
+
+    const selfieData = compressImage(canvas);
+
+    // Try face-api.js detection
+    let detectedFaceBox: { x: number; y: number; width: number; height: number } | undefined;
+
+    if (faceApiLoaded && faceApiModule) {
+      try {
+        console.log('[FaceCapture] Running face detection on image...');
+        const faceapi = faceApiModule;
+
+        let fullDetection;
+        if (faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
+          try {
+            fullDetection = await faceapi
+              .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+              .withFaceLandmarks()
+              .withFaceDescriptor();
+          } catch (e) {
+            console.warn('[FaceCapture] TinyFaceDetector + descriptor failed:', e);
+          }
+        }
+
+        if (!fullDetection && faceapi.nets.ssdMobilenetv1.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
+          try {
+            fullDetection = await faceapi
+              .detectSingleFace(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }))
+              .withFaceLandmarks()
+              .withFaceDescriptor();
+          } catch (e) {
+            console.warn('[FaceCapture] SsdMobilenetv1 + descriptor failed:', e);
+          }
+        }
+
+        if (fullDetection) {
+          const descriptor = Array.from(fullDetection.descriptor) as number[];
+          console.log('[FaceCapture] Face detected with descriptor! Length:', descriptor.length);
+          return { selfieData, facialDescriptor: descriptor };
+        }
+
+        // Try detection only for face box
+        let simpleDetection;
+        if (faceapi.nets.tinyFaceDetector.isLoaded) {
+          simpleDetection = await faceapi
+            .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.2 }));
+        }
+        if (!simpleDetection && faceapi.nets.ssdMobilenetv1.isLoaded) {
+          simpleDetection = await faceapi
+            .detectSingleFace(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.2 }));
+        }
+
+        if (simpleDetection) {
+          const box = simpleDetection.box;
+          detectedFaceBox = { x: box.x, y: box.y, width: box.width, height: box.height };
+          console.log('[FaceCapture] Face box detected (no descriptor). Using image hash with face crop.');
+        } else {
+          console.warn('[FaceCapture] No face detected. Using image hash with center crop.');
+        }
+      } catch (detectErr) {
+        console.error('[FaceCapture] Face detection error:', detectErr);
+      }
+    }
+
+    // Fallback: image-hash-based descriptor
+    console.log('[FaceCapture] Using image-hash descriptor', detectedFaceBox ? '(with face crop)' : '(center crop)');
+    const descriptor = generateImageHashDescriptor(canvas, detectedFaceBox);
+    return { selfieData, facialDescriptor: descriptor };
+  }, [compressImage, faceApiLoaded, generateImageHashDescriptor]);
+
+  // ─── Handle camera capture ──────────────────────────────────
+  const handleCameraCapture = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
     setCapturing(true);
@@ -413,8 +496,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     try {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-
-      // Ensure valid video dimensions
       const width = video.videoWidth || 640;
       const height = video.videoHeight || 480;
       canvas.width = width;
@@ -437,7 +518,7 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
       const selfieData = compressImage(canvas);
       setCapturedImage(selfieData);
 
-      // ─── Try face-api.js detection on the captured canvas ───
+      // Process through face-api
       let detectedFaceBox: { x: number; y: number; width: number; height: number } | undefined;
 
       if (faceApiLoaded && faceApiModule) {
@@ -445,7 +526,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
           console.log('[FaceCapture] Running face detection on captured image...');
           const faceapi = faceApiModule;
 
-          // Try full pipeline: detect → landmarks → descriptor
           let fullDetection;
           if (faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
             try {
@@ -477,8 +557,7 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
             return;
           }
 
-          // Try face detection only (without descriptor) to get face box for image hash
-          console.log('[FaceCapture] Full pipeline failed, trying face detection only...');
+          // Try face detection only
           let simpleDetection;
           if (faceapi.nets.tinyFaceDetector.isLoaded) {
             simpleDetection = await faceapi
@@ -492,21 +571,13 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
           if (simpleDetection) {
             const box = simpleDetection.box;
             detectedFaceBox = { x: box.x, y: box.y, width: box.width, height: box.height };
-            console.log('[FaceCapture] Face box detected (no descriptor). Using image hash with face crop.');
-          } else {
-            console.warn('[FaceCapture] No face detected at all. Using image hash with center crop.');
           }
         } catch (detectErr) {
           console.error('[FaceCapture] Face detection error on capture:', detectErr);
         }
-      } else {
-        // face-api not loaded - try detection-only to find face box for better hash
-        console.log('[FaceCapture] face-api not loaded, capturing with image hash.');
       }
 
-      // ─── Fallback: image-hash-based descriptor ───
-      // This is deterministic - same face produces similar descriptor
-      console.log('[FaceCapture] Using image-hash descriptor', detectedFaceBox ? '(with face crop)' : '(center crop)');
+      // Fallback: image-hash-based descriptor
       const descriptor = generateImageHashDescriptor(canvas, detectedFaceBox);
       onCapture({ selfieData, facialDescriptor: descriptor });
     } catch (err) {
@@ -517,21 +588,69 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     }
   }, [compressImage, faceApiLoaded, generateImageHashDescriptor, onCapture, onError]);
 
+  // ─── Handle file upload ──────────────────────────────────
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      onError('Please select an image file (JPEG, PNG, etc.)');
+      return;
+    }
+
+    setCapturing(true);
+
+    try {
+      // Read the file as data URL for preview
+      const reader = new FileReader();
+      const loadDataUrl = new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      const dataUrl = await loadDataUrl;
+      setUploadedPreview(dataUrl);
+
+      // Load into an Image element for processing
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = dataUrl;
+      });
+
+      // Process through face-api
+      const result = await processImage(img);
+      if (result) {
+        setCapturedImage(result.selfieData);
+        onCapture(result);
+      } else {
+        onError('Failed to process the uploaded image.');
+      }
+    } catch (err) {
+      console.error('[FaceCapture] Upload error:', err);
+      onError('Failed to process uploaded image. Please try another photo.');
+    } finally {
+      setCapturing(false);
+    }
+  }, [onCapture, onError, processImage]);
+
   // ─── Retake photo ──────────────────────────────────────
   const handleRetake = useCallback(() => {
     setCapturedImage(null);
+    setUploadedPreview(null);
     setDetectionStatus(cameraReady ? 'detecting' : 'idle');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, [cameraReady]);
 
   // ─── Skip camera (demo mode) ──────────────────────────
   const handleSkipCamera = useCallback(() => {
-    // Create a placeholder canvas
     const placeholderCanvas = document.createElement('canvas');
     placeholderCanvas.width = 200;
     placeholderCanvas.height = 200;
     const ctx = placeholderCanvas.getContext('2d');
     if (ctx) {
-      // Create a gradient placeholder
       const gradient = ctx.createLinearGradient(0, 0, 200, 200);
       gradient.addColorStop(0, '#3b82f6');
       gradient.addColorStop(1, '#1e40af');
@@ -545,6 +664,7 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     }
     const selfieData = placeholderCanvas.toDataURL('image/jpeg', 0.5);
     const descriptor = generateImageHashDescriptor(placeholderCanvas);
+    setCapturedImage(selfieData);
     onCapture({ selfieData, facialDescriptor: descriptor });
   }, [generateImageHashDescriptor, onCapture]);
 
@@ -607,135 +727,313 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     <Card className="overflow-hidden">
       <CardContent className="p-4 sm:p-6">
         <div className="flex flex-col items-center gap-4">
-          {/* Camera view / Captured preview */}
-          <div className="relative w-full max-w-sm aspect-[4/3] bg-black rounded-xl overflow-hidden">
-            {capturedImage ? (
-              <img
-                src={capturedImage}
-                alt="Captured selfie"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <>
-                <video
-                  ref={videoRef}
-                  className="w-full h-full object-cover"
-                  style={{ transform: 'scaleX(-1)' }}
-                  playsInline
-                  muted
-                  autoPlay
-                />
-                {/* Face guide overlay */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div
-                    className="w-48 h-60 sm:w-56 sm:h-72 border-2 border-dashed rounded-[50%] transition-colors duration-300"
-                    style={{
-                      borderColor:
-                        detectionStatus === 'face-found'
-                          ? 'rgba(16,185,129,0.8)'
-                          : detectionStatus === 'no-face'
-                            ? 'rgba(239,68,68,0.6)'
-                            : 'rgba(255,255,255,0.4)',
-                    }}
-                  />
-                </div>
-              </>
-            )}
-
-            {/* Camera error overlay */}
-            {cameraError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-4">
-                <div className="text-center text-white space-y-3">
-                  <X className="h-8 w-8 mx-auto mb-2 text-red-400" />
-                  <p className="text-sm">{cameraError}</p>
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-white border-white/30"
-                      onClick={() => {
-                        setCameraError(null);
-                        startCamera();
-                      }}
-                    >
-                      <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-                      Retry Camera
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="bg-amber-600 hover:bg-amber-700 text-white"
-                      onClick={handleSkipCamera}
-                    >
-                      <WifiOff className="h-3.5 w-3.5 mr-1.5" />
-                      Continue Without Camera (Demo)
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Hidden canvas for capture */}
-          <canvas ref={canvasRef} className="hidden" />
-
-          {/* Status indicator */}
+          {/* Capture Method Selector */}
           {!capturedImage && (
-            <div className={`flex items-center gap-2 text-sm ${getStatusColor()}`}>
-              {getStatusIcon()}
-              <span>{getStatusText()}</span>
-            </div>
-          )}
-
-          {/* Image-hash mode notice */}
-          {useImageHash && !capturedImage && cameraReady && (
-            <Alert variant="default" className="border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20 w-full max-w-sm">
-              <AlertTriangle className="h-4 w-4 text-blue-500" />
-              <AlertDescription className="text-blue-700 dark:text-blue-400 text-xs">
-                Simplified mode — AI face models unavailable. Your selfie will be captured and compared using image analysis for verification.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Camera not ready message */}
-          {!cameraReady && !cameraError && !capturedImage && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{detectionStatus === 'loading-model' ? modelLoadingMsg : 'Starting camera...'}</span>
-            </div>
-          )}
-
-          {/* Capture / Retake buttons */}
-          {capturedImage ? (
-            <div className="flex gap-3 w-full max-w-sm">
+            <div className="flex gap-2 w-full max-w-sm">
               <Button
-                variant="outline"
-                onClick={handleRetake}
-                className="flex-1 gap-2"
+                variant={captureMethod === 'camera' ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={() => setCaptureMethod('camera')}
               >
-                <RotateCcw className="h-4 w-4" />
-                Retake
+                <Camera className="h-3.5 w-3.5" />
+                Camera
+              </Button>
+              <Button
+                variant={captureMethod === 'upload' ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={() => setCaptureMethod('upload')}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload
+              </Button>
+              <Button
+                variant={captureMethod === 'demo' ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={() => setCaptureMethod('demo')}
+              >
+                <UserCircle className="h-3.5 w-3.5" />
+                Demo
               </Button>
             </div>
-          ) : (
-            <Button
-              onClick={handleCapture}
-              disabled={!cameraReady || capturing}
-              className="w-full max-w-sm gap-2 bg-primary hover:bg-primary/90"
-              size="lg"
-            >
-              {capturing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <Camera className="h-4 w-4" />
-                  {mode === 'activation' ? 'Capture Selfie' : 'Capture & Check In'}
-                </>
+          )}
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileUpload}
+          />
+
+          {/* ===== Camera Mode ===== */}
+          {captureMethod === 'camera' && (
+            <>
+              {/* Camera view / Captured preview */}
+              <div className="relative w-full max-w-sm aspect-[4/3] bg-black rounded-xl overflow-hidden">
+                {capturedImage ? (
+                  <img
+                    src={capturedImage}
+                    alt="Captured selfie"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <>
+                    <video
+                      ref={videoRef}
+                      className="w-full h-full object-cover"
+                      style={{ transform: 'scaleX(-1)' }}
+                      playsInline
+                      muted
+                      autoPlay
+                    />
+                    {/* Face guide overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div
+                        className="w-48 h-60 sm:w-56 sm:h-72 border-2 border-dashed rounded-[50%] transition-colors duration-300"
+                        style={{
+                          borderColor:
+                            detectionStatus === 'face-found'
+                              ? 'rgba(16,185,129,0.8)'
+                              : detectionStatus === 'no-face'
+                                ? 'rgba(239,68,68,0.6)'
+                                : 'rgba(255,255,255,0.4)',
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Camera error overlay */}
+                {cameraError && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-4">
+                    <div className="text-center text-white space-y-3">
+                      <X className="h-8 w-8 mx-auto mb-2 text-red-400" />
+                      <p className="text-sm">{cameraError}</p>
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-white border-white/30"
+                          onClick={() => {
+                            setCameraError(null);
+                            startCamera();
+                          }}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                          Retry Camera
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                          onClick={() => setCaptureMethod('upload')}
+                        >
+                          <Upload className="h-3.5 w-3.5 mr-1.5" />
+                          Upload Photo Instead
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Hidden canvas for capture */}
+              <canvas ref={canvasRef} className="hidden" />
+
+              {/* Status indicator */}
+              {!capturedImage && (
+                <div className={`flex items-center gap-2 text-sm ${getStatusColor()}`}>
+                  {getStatusIcon()}
+                  <span>{getStatusText()}</span>
+                </div>
               )}
-            </Button>
+
+              {/* Image-hash mode notice */}
+              {useImageHash && !capturedImage && cameraReady && (
+                <Alert variant="default" className="border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20 w-full max-w-sm">
+                  <AlertTriangle className="h-4 w-4 text-blue-500" />
+                  <AlertDescription className="text-blue-700 dark:text-blue-400 text-xs">
+                    Simplified mode — AI face models unavailable. Your selfie will be captured and compared using image analysis for verification.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Camera not ready message */}
+              {!cameraReady && !cameraError && !capturedImage && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>{detectionStatus === 'loading-model' ? modelLoadingMsg : 'Starting camera...'}</span>
+                </div>
+              )}
+
+              {/* Capture / Retake buttons */}
+              {capturedImage ? (
+                <div className="flex gap-3 w-full max-w-sm">
+                  <Button
+                    variant="outline"
+                    onClick={handleRetake}
+                    className="flex-1 gap-2"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Retake
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  onClick={handleCameraCapture}
+                  disabled={!cameraReady || capturing}
+                  className="w-full max-w-sm gap-2 bg-primary hover:bg-primary/90"
+                  size="lg"
+                >
+                  {capturing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="h-4 w-4" />
+                      {mode === 'activation' ? 'Capture Selfie' : 'Capture & Check In'}
+                    </>
+                  )}
+                </Button>
+              )}
+            </>
+          )}
+
+          {/* ===== Upload Mode ===== */}
+          {captureMethod === 'upload' && (
+            <>
+              <div className="relative w-full max-w-sm aspect-[4/3] bg-muted rounded-xl overflow-hidden flex items-center justify-center">
+                {uploadedPreview ? (
+                  <img
+                    src={uploadedPreview}
+                    alt="Uploaded photo"
+                    className="w-full h-full object-cover"
+                  />
+                ) : capturedImage ? (
+                  <img
+                    src={capturedImage}
+                    alt="Processed photo"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground p-4">
+                    <ImagePlus className="h-12 w-12 opacity-40" />
+                    <p className="text-sm text-center">Select a clear photo of your face</p>
+                    <Button
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Choose Photo
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {capturing && (
+                <div className="flex items-center gap-2 text-sm text-blue-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Processing photo...</span>
+                </div>
+              )}
+
+              {!capturedImage && !capturing && (
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full max-w-sm gap-2 bg-primary hover:bg-primary/90"
+                  size="lg"
+                  disabled={capturing}
+                >
+                  {capturing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  Select Photo
+                </Button>
+              )}
+
+              {capturedImage && (
+                <div className="flex gap-3 w-full max-w-sm">
+                  <Button
+                    variant="outline"
+                    onClick={handleRetake}
+                    className="flex-1 gap-2"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Choose Different Photo
+                  </Button>
+                </div>
+              )}
+
+              <Alert variant="default" className="border-blue-500/30 bg-blue-50/30 dark:bg-blue-950/10 w-full max-w-sm">
+                <AlertDescription className="text-xs text-muted-foreground">
+                  Upload a clear, well-lit photo showing your face. The photo will be used for identity verification during check-in.
+                </AlertDescription>
+              </Alert>
+            </>
+          )}
+
+          {/* ===== Demo Mode ===== */}
+          {captureMethod === 'demo' && (
+            <>
+              <div className="relative w-full max-w-sm aspect-[4/3] bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-950/30 dark:to-blue-900/30 rounded-xl overflow-hidden flex items-center justify-center">
+                {capturedImage ? (
+                  <img
+                    src={capturedImage}
+                    alt="Demo photo"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-3 p-4">
+                    <UserCircle className="h-16 w-16 text-blue-400 dark:text-blue-500" />
+                    <p className="text-sm text-center text-blue-700 dark:text-blue-300 font-medium">
+                      Demo Mode
+                    </p>
+                    <p className="text-xs text-center text-muted-foreground max-w-[240px]">
+                      A placeholder profile will be created. Face verification will use image analysis instead of AI detection.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {!capturedImage ? (
+                <Button
+                  onClick={handleSkipCamera}
+                  className="w-full max-w-sm gap-2"
+                  size="lg"
+                  disabled={capturing}
+                >
+                  <UserCircle className="h-4 w-4" />
+                  Continue with Demo Profile
+                </Button>
+              ) : (
+                <div className="flex gap-3 w-full max-w-sm">
+                  <Button
+                    variant="outline"
+                    onClick={handleRetake}
+                    className="flex-1 gap-2"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reset
+                  </Button>
+                </div>
+              )}
+
+              <Alert variant="default" className="border-amber-500/30 bg-amber-50/30 dark:bg-amber-950/10 w-full max-w-sm">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                <AlertDescription className="text-xs text-amber-700 dark:text-amber-400">
+                  Demo mode is for testing only. Face verification accuracy will be limited. Use a real photo for the best experience.
+                </AlertDescription>
+              </Alert>
+            </>
           )}
         </div>
       </CardContent>

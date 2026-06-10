@@ -86,7 +86,9 @@ import {
   Pencil,
   Trash2,
   MoreVertical,
+  UserCircle,
 } from 'lucide-react';
+import { ProfilePanel } from './profile-panel';
 
 // ============================================================
 // Stats Card
@@ -127,6 +129,7 @@ function StatCard({
 // ============================================================
 export function AdminDashboard() {
   const { user, logout } = useAuthStore();
+  const [profileOpen, setProfileOpen] = useState(false);
   const [stats, setStats] = useState<{
     totalDepartments: number;
     totalStudents: number;
@@ -241,18 +244,24 @@ export function AdminDashboard() {
               <p className="text-xs text-white/70">Admin Panel</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-white/70 hidden sm:inline">
-              Welcome, <span className="font-medium text-white">{user?.name}</span>
-            </span>
+          <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
+              onClick={() => setProfileOpen(true)}
+              className="border-white/20 text-white hover:bg-white/10 hover:text-white transition-colors gap-1.5"
+            >
+              <UserCircle className="size-4" />
+              <span className="hidden sm:inline">{user?.name}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleLogout}
-              className="border-white/20 text-white hover:bg-white/10 hover:text-white transition-colors"
+              className="h-9 w-9 text-white/80 hover:text-red-200 hover:bg-white/10"
+              title="Log out"
             >
               <LogOut className="size-4" />
-              <span className="hidden sm:inline">Logout</span>
             </Button>
           </div>
         </div>
@@ -384,6 +393,9 @@ export function AdminDashboard() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Profile Panel */}
+      <ProfilePanel open={profileOpen} onOpenChange={setProfileOpen} />
 
       {/* Footer */}
       <footer className="border-t bg-secondary/50 mt-auto">

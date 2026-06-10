@@ -23,6 +23,7 @@ import {
   XCircle,
   ArrowLeft,
   RefreshCw,
+  UserCircle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +62,7 @@ import { useGeoLocation } from '@/hooks/use-geo-location';
 import { AnalyticsPanel } from './analytics-panel';
 import { GradingPanel } from './grading-panel';
 import { ExportPanel } from './export-panel';
+import { ProfilePanel } from './profile-panel';
 import type {
   SessionInfo,
   AttendanceInfo,
@@ -935,6 +937,7 @@ function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
 export function LecturerPortal() {
   const { user, logout } = useAuthStore();
   const geo = useGeoLocation();
+  const [profileOpen, setProfileOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [courses, setCourses] = useState<CourseInfo[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
@@ -1025,10 +1028,24 @@ export function LecturerPortal() {
             <Separator orientation="vertical" className="h-6 bg-white/20" />
             <span className="text-sm text-white/70">Lecturer Portal</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-white/90 hidden sm:inline">{user?.name}</span>
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-white/80 hover:text-white hover:bg-white/10">
-              <LogOut className="mr-1 h-4 w-4" /> Logout
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setProfileOpen(true)}
+              className="text-white/80 hover:text-white hover:bg-white/10 gap-1.5"
+            >
+              <UserCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">{user?.name}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              className="h-9 w-9 text-white/80 hover:text-red-200 hover:bg-white/10"
+              title="Log out"
+            >
+              <LogOut className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -1212,6 +1229,9 @@ export function LecturerPortal() {
         courses={courses}
         onCreated={() => { fetchSessions(); fetchCourses(); }}
       />
+
+      {/* Profile Panel */}
+      <ProfilePanel open={profileOpen} onOpenChange={setProfileOpen} />
 
       {/* Footer */}
       <footer className="border-t mt-auto bg-secondary/50">

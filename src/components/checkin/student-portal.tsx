@@ -28,6 +28,7 @@ import {
   ArrowLeft,
   Fingerprint,
   LogIn,
+  UserCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +40,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthStore } from '@/hooks/use-auth';
 import { FaceCapture } from '@/components/checkin/face-capture';
 import { CheckInFlow } from '@/components/checkin/check-in-flow';
+import { ProfilePanel } from '@/components/checkin/profile-panel';
 import type { SessionInfo, CheckInResult, AttendanceStatus, ApiResponse } from '@/lib/types';
 import { SESSION_POLL_INTERVAL } from '@/lib/constants';
 import { toast } from 'sonner';
@@ -391,6 +393,7 @@ function ActivePortal() {
   const [sessions, setSessions] = useState<SessionWithAttendance[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCheckIn, setActiveCheckIn] = useState<SessionInfo | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch sessions
@@ -486,6 +489,15 @@ function ActivePortal() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setProfileOpen(true)}
+                className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10"
+                title="View profile"
+              >
+                <UserCircle className="h-4 w-4" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -593,6 +605,9 @@ function ActivePortal() {
           </>
         )}
       </main>
+
+      {/* Profile Panel */}
+      <ProfilePanel open={profileOpen} onOpenChange={setProfileOpen} />
 
       {/* Footer */}
       <footer className="bg-secondary/50 border-t border-border/60 mt-auto">

@@ -129,3 +129,31 @@ Stage Summary:
 - Cosine similarity provides better matching for both real and image-hash descriptors
 - "Continue Without Camera (Demo)" button works for cameraless environments
 - Full activation flow tested and working
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix face capture + Add profile pages for all user types
+
+Work Log:
+- Examined existing face-capture.tsx and identified issues: camera-only mode with no alternatives
+- Rewrote face-capture.tsx with 3 capture methods: Camera, Upload Photo, Demo Mode
+- Added file upload option for devices without camera
+- Made demo mode always accessible (not just on camera failure)
+- Created admin profile API route: GET + PUT /api/admin/profile
+- Created lecturer profile API route: GET + PUT /api/lecturer/profile
+- Added PUT support to student profile API route: PUT /api/student/profile
+- Added selfieData to student profile GET response
+- Created shared ProfilePanel component with Sheet/drawer UI
+- ProfilePanel supports all 3 roles with role-specific details
+- Integrated ProfilePanel into Admin Dashboard header with UserCircle button
+- Integrated ProfilePanel into Lecturer Portal header with UserCircle button
+- Integrated ProfilePanel into Student Portal header with UserCircle button
+- ProfilePanel features: avatar with initials, role badge, edit name/email, change password (collapsible), logout
+- Tested with Agent Browser: Admin profile panel works, Student profile panel works
+- Lint passes with 0 errors
+
+Stage Summary:
+- Face capture now has 3 input methods (Camera/Upload/Demo) making it work in any environment
+- All 3 user types (Admin, Lecturer, Student) now have profile pages
+- Profile pages show role-specific details and allow editing name, email, and password
+- Profile API routes support GET (fetch) and PUT (update) operations
