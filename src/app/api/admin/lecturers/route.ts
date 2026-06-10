@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { hashPassword, generateDefaultPassword } from '@/lib/auth';
 
 export async function GET() {
   try {
@@ -78,9 +79,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Set default password at creation time
+    const defaultPassword = generateDefaultPassword();
+    const passwordHash = await hashPassword(defaultPassword);
+
     const { data: lecturers, error } = await db
       .from('lecturers')
-      .insert({ name, email })
+      .insert({ name, email, password_hash: passwordHash })
       .select();
 
     if (error || !lecturers || lecturers.length === 0) {
@@ -98,11 +103,103 @@ export async function POST(request: NextRequest) {
         id: lecturer.id,
         name: lecturer.name,
         email: lecturer.email,
+        defaultPassword,
         courses: [],
       },
     });
   } catch (error) {
     console.error('Create lecturer error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const { id, name, email } = await request.json();
+
+    if (!id || !name || !email) {
+      return NextResponse.json(
+        { success: false, error: 'ID, name, and email are required' },
+        { status: 400 }
+      );
+    }
+
+    // Check if email is taken by another lecturer
+    const { data: existing } = await db
+      .from('lecturers')
+      .select('id')
+      .eq('email', email);
+
+    if (existing && existing.length > 0 && (existing[0] as Record<string, unknown>).id !== id) {
+      return NextResponse.json(
+        { success: false, error: 'Email is already in use by another lecturer' },
+        { status: 409 }
+      );
+    }
+
+    const { data: lecturers, error } = await db
+      .from('lecturers')
+      .update({ name, email })
+      .eq('id', id)
+      .select();
+
+    if (error || !lecturers || lecturers.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to update lecturer' },
+        { status: 500 }
+      );
+    }
+
+    const lecturer = lecturers[0] as Record<string, unknown>;
+    return NextResponse.json({
+      success: true,
+      data: { id: lecturer.id, name: lecturer.name, email: lecturer.email },
+    });
+  } catch (error) {
+    console.error('Update lecturer error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: 'Lecturer ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Check if lecturer has courses
+    const { data: courses } = await db.from('courses').select('id').eq('lecturer_id', id);
+    if (courses && courses.length > 0) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot delete lecturer with assigned courses. Remove course assignments first.' },
+        { status: 409 }
+      );
+    }
+
+    const { error } = await db.from('lecturers').delete().eq('id', id);
+
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to delete lecturer' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data: { id } });
+  } catch (error) {
+    console.error('Delete lecturer error:', error);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

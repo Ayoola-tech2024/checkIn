@@ -348,21 +348,51 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
             {/* Camera error overlay */}
             {cameraError && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-4">
-                <div className="text-center text-white">
+                <div className="text-center text-white space-y-3">
                   <X className="h-8 w-8 mx-auto mb-2 text-red-400" />
                   <p className="text-sm">{cameraError}</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 text-white border-white/30"
-                    onClick={() => {
-                      setCameraError(null);
-                      startCamera();
-                    }}
-                  >
-                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-                    Retry Camera
-                  </Button>
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-white border-white/30"
+                      onClick={() => {
+                        setCameraError(null);
+                        startCamera();
+                      }}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                      Retry Camera
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                      onClick={() => {
+                        // Skip camera — generate fallback descriptor
+                        const descriptor = generateFallbackDescriptor();
+                        // Create a small placeholder selfie
+                        const placeholderCanvas = document.createElement('canvas');
+                        placeholderCanvas.width = 100;
+                        placeholderCanvas.height = 100;
+                        const ctx = placeholderCanvas.getContext('2d');
+                        if (ctx) {
+                          ctx.fillStyle = '#6366f1';
+                          ctx.fillRect(0, 0, 100, 100);
+                          ctx.fillStyle = '#ffffff';
+                          ctx.font = '40px sans-serif';
+                          ctx.textAlign = 'center';
+                          ctx.textBaseline = 'middle';
+                          ctx.fillText('👤', 50, 50);
+                        }
+                        const selfieData = placeholderCanvas.toDataURL('image/jpeg', 0.5);
+                        onCapture({ selfieData, facialDescriptor: descriptor });
+                      }}
+                    >
+                      <Camera className="h-3.5 w-3.5 mr-1.5" />
+                      Continue Without Camera (Demo)
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}

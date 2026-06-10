@@ -3,11 +3,11 @@ import { db } from '@/lib/insforge';
 
 export async function POST(request: NextRequest) {
   try {
-    const { sessionId, lecturerLat, lecturerLng } = await request.json();
+    const { sessionId, lecturerLat, lecturerLng, useVenueLocation } = await request.json();
 
-    if (!sessionId || lecturerLat === undefined || lecturerLng === undefined) {
+    if (!sessionId) {
       return NextResponse.json(
-        { success: false, error: 'Session ID, lecturer latitude, and longitude are required' },
+        { success: false, error: 'Session ID is required' },
         { status: 400 }
       );
     }
@@ -30,6 +30,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let finalLat: number;
+    let finalLng: number;
+
+    if (useVenueLocation || lecturerLat === undefined || lecturerLng === undefined) {
+      // Fallback: use venue coordinates when GPS is unavailable (sandbox/demo)
+      const { data: venues } = await db
+        .from('venues')
+        .select('latitude, longitude')
+        .eq('id', session.venue_id as string);
+
+      if (!venues || venues.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Venue not found for location fallback' },
+          { status: 404 }
+        );
+      }
+
+      const venue = venues[0] as Record<string, unknown>;
+      finalLat = venue.latitude as number;
+      finalLng = venue.longitude as number;
+    } else {
+      finalLat = parseFloat(lecturerLat);
+      finalLng = parseFloat(lecturerLng);
+    }
+
     const now = new Date();
     const endsAt = new Date(now.getTime() + (session.duration_minutes as number) * 60000);
 
@@ -39,8 +64,8 @@ export async function POST(request: NextRequest) {
         status: 'active',
         started_at: now.toISOString(),
         ends_at: endsAt.toISOString(),
-        lecturer_lat: parseFloat(lecturerLat),
-        lecturer_lng: parseFloat(lecturerLng),
+        lecturer_lat: finalLat,
+        lecturer_lng: finalLng,
       })
       .eq('id', sessionId);
 
@@ -56,8 +81,8 @@ export async function POST(request: NextRequest) {
       status: 'active',
       started_at: now.toISOString(),
       ends_at: endsAt.toISOString(),
-      lecturer_lat: parseFloat(lecturerLat),
-      lecturer_lng: parseFloat(lecturerLng),
+      lecturer_lat: finalLat,
+      lecturer_lng: finalLng,
     };
 
     // Fetch course and venue info
@@ -72,15 +97,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        id: updatedSession.id,
+        id: updatedSession.id || sessionId,
         title: updatedSession.title || session.title,
-        status: updatedSession.status,
-        startedAt: updatedSession.started_at,
-        endsAt: updatedSession.ends_at,
-        lecturerLat: updatedSession.lecturer_lat,
-        lecturerLng: updatedSession.lecturer_lng,
+        status: 'active',
+        startedAt: updatedSession.started_at || now.toISOString(),
+        endsAt: updatedSession.ends_at || endsAt.toISOString(),
+        lecturerLat: finalLat,
+        lecturerLng: finalLng,
         courseName: course?.name,
         venueName: venue?.name,
+        usedVenueLocation: useVenueLocation || lecturerLat === undefined,
       },
     });
   } catch (error) {

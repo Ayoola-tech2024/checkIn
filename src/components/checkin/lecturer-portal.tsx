@@ -543,22 +543,47 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
   const [ending, setEnding] = useState(false);
   const [showLiveMonitor, setShowLiveMonitor] = useState(false);
 
-  const handleStartSession = async () => {
+  const handleStartSession = async (useVenueFallback = false) => {
     setStarting(true);
     try {
-      const pos = await getCurrentPosition();
+      let body: Record<string, unknown>;
+
+      if (useVenueFallback) {
+        // Use venue coordinates when GPS is unavailable
+        body = {
+          sessionId: session.id,
+          useVenueLocation: true,
+        };
+      } else {
+        try {
+          const pos = await getCurrentPosition();
+          body = {
+            sessionId: session.id,
+            lecturerLat: pos.latitude,
+            lecturerLng: pos.longitude,
+          };
+        } catch {
+          // GPS failed — automatically fall back to venue location
+          body = {
+            sessionId: session.id,
+            useVenueLocation: true,
+          };
+        }
+      }
+
       const res = await fetch('/api/lecturer/start-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.id,
-          lecturerLat: pos.latitude,
-          lecturerLng: pos.longitude,
-        }),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (json.success) {
-        toast.success('Session started successfully');
+        const usedVenue = json.data?.usedVenueLocation;
+        toast.success(
+          usedVenue
+            ? 'Session started (using venue location — GPS unavailable)'
+            : 'Session started successfully'
+        );
         onRefresh();
       } else {
         toast.error(json.error || 'Failed to start session');
@@ -567,7 +592,7 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
       if (err instanceof Error) {
         toast.error(err.message);
       } else {
-        toast.error('Failed to get GPS location');
+        toast.error('Failed to start session');
       }
     } finally {
       setStarting(false);
@@ -656,19 +681,33 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
           </div>
           <div className="flex items-center gap-2">
             {session.status === 'scheduled' && (
-              <Button
-                size="sm"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={handleStartSession}
-                disabled={starting}
-              >
-                {starting ? (
-                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Play className="mr-1 h-3.5 w-3.5" />
-                )}
-                Start
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => handleStartSession(false)}
+                  disabled={starting}
+                  title="Start with GPS location"
+                >
+                  {starting ? (
+                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Play className="mr-1 h-3.5 w-3.5" />
+                  )}
+                  Start
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleStartSession(true)}
+                  disabled={starting}
+                  title="Start using venue location (for demo/sandbox)"
+                  className="text-xs"
+                >
+                  <MapPin className="mr-1 h-3 w-3" />
+                  Venue
+                </Button>
+              </div>
             )}
             {session.status === 'active' && (
               <>

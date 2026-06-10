@@ -192,3 +192,145 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export async function PUT(request: NextRequest) {
+  try {
+    const { id, name, code, level, lecturerId, departmentIds } = await request.json();
+
+    if (!id || !name || !code || !level || !lecturerId) {
+      return NextResponse.json(
+        { success: false, error: 'ID, name, code, level, and lecturerId are required' },
+        { status: 400 }
+      );
+    }
+
+    // Check unique code (excluding current course)
+    const { data: existingCourses } = await db.from('courses').select('id').eq('code', code);
+    if (existingCourses && existingCourses.length > 0 && (existingCourses[0] as Record<string, unknown>).id !== id) {
+      return NextResponse.json(
+        { success: false, error: 'Course with this code already exists' },
+        { status: 409 }
+      );
+    }
+
+    const { data: courses, error } = await db
+      .from('courses')
+      .update({
+        name,
+        code,
+        level,
+        lecturer_id: lecturerId,
+      })
+      .eq('id', id)
+      .select();
+
+    if (error || !courses || courses.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to update course' },
+        { status: 500 }
+      );
+    }
+
+    // Update course_department links if provided
+    if (departmentIds && Array.isArray(departmentIds)) {
+      // Delete existing links
+      await db.from('course_departments').delete().eq('course_id', id);
+
+      // Insert new links
+      if (departmentIds.length > 0) {
+        const courseDeptInserts = departmentIds.map((departmentId: string) => ({
+          course_id: id,
+          department_id: departmentId,
+        }));
+        await db.from('course_departments').insert(courseDeptInserts);
+      }
+    }
+
+    const course = courses[0] as Record<string, unknown>;
+
+    // Fetch lecturer info
+    const { data: lecturerData } = await db
+      .from('lecturers')
+      .select('id, name')
+      .eq('id', lecturerId);
+    const lecturer = (lecturerData?.[0] as Record<string, unknown>) || null;
+
+    // Fetch department info
+    let departments: { id: string; name: string; code: string }[] = [];
+    if (departmentIds && departmentIds.length > 0) {
+      const { data: deptData } = await db
+        .from('departments')
+        .select('id, name, code')
+        .in('id', departmentIds);
+      departments = (deptData || []).map((d: Record<string, unknown>) => ({
+        id: d.id as string,
+        name: d.name as string,
+        code: d.code as string,
+      }));
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: course.id,
+        name: course.name,
+        code: course.code,
+        level: course.level,
+        lecturerId: course.lecturer_id,
+        lecturerName: lecturer?.name,
+        departments,
+      },
+    });
+  } catch (error) {
+    console.error('Update course error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: 'Course ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Check if course has sessions
+    const { data: sessions } = await db.from('sessions').select('id').eq('course_id', id);
+    if (sessions && sessions.length > 0) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot delete course with scheduled sessions. Remove sessions first.' },
+        { status: 409 }
+      );
+    }
+
+    // Delete course_departments links first
+    await db.from('course_departments').delete().eq('course_id', id);
+    // Delete course_grading links
+    await db.from('course_grading').delete().eq('course_id', id);
+
+    const { error } = await db.from('courses').delete().eq('id', id);
+
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to delete course' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data: { id } });
+  } catch (error) {
+    console.error('Delete course error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

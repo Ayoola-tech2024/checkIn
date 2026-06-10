@@ -45,6 +45,23 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import {
   Users,
@@ -66,6 +83,9 @@ import {
   CalendarDays,
   UserPlus,
   Copy,
+  Pencil,
+  Trash2,
+  MoreVertical,
 } from 'lucide-react';
 
 // ============================================================
@@ -376,6 +396,39 @@ export function AdminDashboard() {
 }
 
 // ============================================================
+// Row Actions Dropdown
+// ============================================================
+function RowActions({
+  onEdit,
+  onDelete,
+}: {
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-8">
+          <MoreVertical className="size-4" />
+          <span className="sr-only">Actions</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onEdit} className="gap-2">
+          <Pencil className="size-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onDelete} variant="destructive" className="gap-2">
+          <Trash2 className="size-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ============================================================
 // Students Tab
 // ============================================================
 function StudentsTab({
@@ -405,6 +458,19 @@ function StudentsTab({
   const [studentMatric, setStudentMatric] = useState('');
   const [studentDeptId, setStudentDeptId] = useState('');
   const [creatingStudent, setCreatingStudent] = useState(false);
+
+  // Edit student state
+  const [editStudentOpen, setEditStudentOpen] = useState(false);
+  const [editStudent, setEditStudent] = useState<StudentInfo | null>(null);
+  const [editStudentName, setEditStudentName] = useState('');
+  const [editStudentMatric, setEditStudentMatric] = useState('');
+  const [editStudentDeptId, setEditStudentDeptId] = useState('');
+  const [savingStudent, setSavingStudent] = useState(false);
+
+  // Delete student state
+  const [deleteStudentOpen, setDeleteStudentOpen] = useState(false);
+  const [deleteStudent, setDeleteStudent] = useState<StudentInfo | null>(null);
+  const [deletingStudent, setDeletingStudent] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -501,6 +567,77 @@ function StudentsTab({
       toast.error('Network error');
     } finally {
       setCreatingStudent(false);
+    }
+  };
+
+  const openEditStudent = (s: StudentInfo) => {
+    setEditStudent(s);
+    setEditStudentName(s.name);
+    setEditStudentMatric(s.matricNumber);
+    setEditStudentDeptId(s.departmentId);
+    setEditStudentOpen(true);
+  };
+
+  const handleEditStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editStudent || !editStudentName.trim() || !editStudentMatric.trim() || !editStudentDeptId) return;
+    setSavingStudent(true);
+
+    try {
+      const res = await fetch('/api/admin/students', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editStudent.id,
+          name: editStudentName.trim(),
+          matricNumber: editStudentMatric.trim(),
+          departmentId: editStudentDeptId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Student updated successfully');
+        setEditStudentOpen(false);
+        fetchStudents(filterDept === 'all' ? undefined : filterDept);
+        fetchDepartments();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to update student');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setSavingStudent(false);
+    }
+  };
+
+  const openDeleteStudent = (s: StudentInfo) => {
+    setDeleteStudent(s);
+    setDeleteStudentOpen(true);
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!deleteStudent) return;
+    setDeletingStudent(true);
+
+    try {
+      const res = await fetch(`/api/admin/students?id=${deleteStudent.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Student deleted successfully');
+        setDeleteStudentOpen(false);
+        fetchStudents(filterDept === 'all' ? undefined : filterDept);
+        fetchDepartments();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to delete student');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setDeletingStudent(false);
     }
   };
 
@@ -763,6 +900,7 @@ function StudentsTab({
                       <TableHead>Matric No.</TableHead>
                       <TableHead>Department</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="w-12">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -785,6 +923,12 @@ function StudentsTab({
                             </Badge>
                           )}
                         </TableCell>
+                        <TableCell>
+                          <RowActions
+                            onEdit={() => openEditStudent(s)}
+                            onDelete={() => openDeleteStudent(s)}
+                          />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -794,6 +938,88 @@ function StudentsTab({
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Student Dialog */}
+      <Dialog open={editStudentOpen} onOpenChange={setEditStudentOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Student</DialogTitle>
+            <DialogDescription>
+              Update student information
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditStudent} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-student-name">Full Name</Label>
+              <Input
+                id="edit-student-name"
+                value={editStudentName}
+                onChange={(e) => setEditStudentName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-student-matric">Matric Number</Label>
+              <Input
+                id="edit-student-matric"
+                value={editStudentMatric}
+                onChange={(e) => setEditStudentMatric(e.target.value)}
+                required
+                className="font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-student-dept">Department</Label>
+              <Select value={editStudentDeptId} onValueChange={setEditStudentDeptId} required>
+                <SelectTrigger id="edit-student-dept" className="w-full">
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name} ({d.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button
+                type="submit"
+                disabled={savingStudent || !editStudentName.trim() || !editStudentMatric.trim() || !editStudentDeptId}
+                className="shadow-sm hover:shadow-md transition-shadow"
+              >
+                {savingStudent && <Loader2 className="size-4 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Student Confirmation */}
+      <AlertDialog open={deleteStudentOpen} onOpenChange={setDeleteStudentOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Student</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deleteStudent?.name}</strong> ({deleteStudent?.matricNumber})? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingStudent}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteStudent}
+              disabled={deletingStudent}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingStudent && <Loader2 className="size-4 animate-spin mr-2" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -814,6 +1040,18 @@ function DepartmentsTab({
   const [code, setCode] = useState('');
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Edit department state
+  const [editDeptOpen, setEditDeptOpen] = useState(false);
+  const [editDept, setEditDept] = useState<DepartmentInfo | null>(null);
+  const [editDeptName, setEditDeptName] = useState('');
+  const [editDeptCode, setEditDeptCode] = useState('');
+  const [savingDept, setSavingDept] = useState(false);
+
+  // Delete department state
+  const [deleteDeptOpen, setDeleteDeptOpen] = useState(false);
+  const [deleteDept, setDeleteDept] = useState<DepartmentInfo | null>(null);
+  const [deletingDept, setDeletingDept] = useState(false);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -841,6 +1079,69 @@ function DepartmentsTab({
       toast.error('Network error');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const openEditDept = (d: DepartmentInfo) => {
+    setEditDept(d);
+    setEditDeptName(d.name);
+    setEditDeptCode(d.code);
+    setEditDeptOpen(true);
+  };
+
+  const handleEditDept = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editDept || !editDeptName || !editDeptCode) return;
+    setSavingDept(true);
+
+    try {
+      const res = await fetch('/api/admin/departments', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editDept.id, name: editDeptName, code: editDeptCode.toUpperCase() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Department updated successfully');
+        setEditDeptOpen(false);
+        fetchDepartments();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to update department');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setSavingDept(false);
+    }
+  };
+
+  const openDeleteDept = (d: DepartmentInfo) => {
+    setDeleteDept(d);
+    setDeleteDeptOpen(true);
+  };
+
+  const handleDeleteDept = async () => {
+    if (!deleteDept) return;
+    setDeletingDept(true);
+
+    try {
+      const res = await fetch(`/api/admin/departments?id=${deleteDept.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Department deleted successfully');
+        setDeleteDeptOpen(false);
+        fetchDepartments();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to delete department');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setDeletingDept(false);
     }
   };
 
@@ -921,6 +1222,7 @@ function DepartmentsTab({
                     <TableHead>Name</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Students</TableHead>
+                    <TableHead className="w-12">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -936,6 +1238,12 @@ function DepartmentsTab({
                         </Badge>
                       </TableCell>
                       <TableCell>{d.studentCount ?? 0}</TableCell>
+                      <TableCell>
+                        <RowActions
+                          onEdit={() => openEditDept(d)}
+                          onDelete={() => openDeleteDept(d)}
+                        />
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -944,6 +1252,74 @@ function DepartmentsTab({
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Department Dialog */}
+      <Dialog open={editDeptOpen} onOpenChange={setEditDeptOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Department</DialogTitle>
+            <DialogDescription>
+              Update department information
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditDept} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-dept-name">Department Name</Label>
+              <Input
+                id="edit-dept-name"
+                value={editDeptName}
+                onChange={(e) => setEditDeptName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-dept-code">Department Code</Label>
+              <Input
+                id="edit-dept-code"
+                value={editDeptCode}
+                onChange={(e) => setEditDeptCode(e.target.value.toUpperCase())}
+                required
+                maxLength={10}
+                className="uppercase"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="submit"
+                disabled={savingDept || !editDeptName || !editDeptCode}
+                className="shadow-sm hover:shadow-md transition-shadow"
+              >
+                {savingDept && <Loader2 className="size-4 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Department Confirmation */}
+      <AlertDialog open={deleteDeptOpen} onOpenChange={setDeleteDeptOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Department</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deleteDept?.name}</strong> ({deleteDept?.code})? This will also affect all students in this department. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingDept}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteDept}
+              disabled={deletingDept}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingDept && <Loader2 className="size-4 animate-spin mr-2" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -965,6 +1341,18 @@ function LecturersTab({
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  // Edit lecturer state
+  const [editLecturerOpen, setEditLecturerOpen] = useState(false);
+  const [editLecturer, setEditLecturer] = useState<LecturerInfo | null>(null);
+  const [editLecturerName, setEditLecturerName] = useState('');
+  const [editLecturerEmail, setEditLecturerEmail] = useState('');
+  const [savingLecturer, setSavingLecturer] = useState(false);
+
+  // Delete lecturer state
+  const [deleteLecturerOpen, setDeleteLecturerOpen] = useState(false);
+  const [deleteLecturer, setDeleteLecturer] = useState<LecturerInfo | null>(null);
+  const [deletingLecturer, setDeletingLecturer] = useState(false);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email) return;
@@ -978,7 +1366,7 @@ function LecturersTab({
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Lecturer created successfully');
+        toast.success('Lecturer created! Default password: CheckIn@2024', { duration: 10000 });
         setName('');
         setEmail('');
         setDialogOpen(false);
@@ -991,6 +1379,69 @@ function LecturersTab({
       toast.error('Network error');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const openEditLecturer = (l: LecturerInfo) => {
+    setEditLecturer(l);
+    setEditLecturerName(l.name);
+    setEditLecturerEmail(l.email);
+    setEditLecturerOpen(true);
+  };
+
+  const handleEditLecturer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editLecturer || !editLecturerName || !editLecturerEmail) return;
+    setSavingLecturer(true);
+
+    try {
+      const res = await fetch('/api/admin/lecturers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editLecturer.id, name: editLecturerName, email: editLecturerEmail }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Lecturer updated successfully');
+        setEditLecturerOpen(false);
+        fetchLecturers();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to update lecturer');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setSavingLecturer(false);
+    }
+  };
+
+  const openDeleteLecturer = (l: LecturerInfo) => {
+    setDeleteLecturer(l);
+    setDeleteLecturerOpen(true);
+  };
+
+  const handleDeleteLecturer = async () => {
+    if (!deleteLecturer) return;
+    setDeletingLecturer(true);
+
+    try {
+      const res = await fetch(`/api/admin/lecturers?id=${deleteLecturer.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Lecturer deleted successfully');
+        setDeleteLecturerOpen(false);
+        fetchLecturers();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to delete lecturer');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setDeletingLecturer(false);
     }
   };
 
@@ -1071,6 +1522,7 @@ function LecturersTab({
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Courses</TableHead>
+                      <TableHead className="w-12">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1094,6 +1546,12 @@ function LecturersTab({
                             </div>
                           )}
                         </TableCell>
+                        <TableCell>
+                          <RowActions
+                            onEdit={() => openEditLecturer(l)}
+                            onDelete={() => openDeleteLecturer(l)}
+                          />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1103,6 +1561,73 @@ function LecturersTab({
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Lecturer Dialog */}
+      <Dialog open={editLecturerOpen} onOpenChange={setEditLecturerOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Lecturer</DialogTitle>
+            <DialogDescription>
+              Update lecturer information
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditLecturer} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-lect-name">Full Name</Label>
+              <Input
+                id="edit-lect-name"
+                value={editLecturerName}
+                onChange={(e) => setEditLecturerName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-lect-email">Email</Label>
+              <Input
+                id="edit-lect-email"
+                type="email"
+                value={editLecturerEmail}
+                onChange={(e) => setEditLecturerEmail(e.target.value)}
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="submit"
+                disabled={savingLecturer || !editLecturerName || !editLecturerEmail}
+                className="shadow-sm hover:shadow-md transition-shadow"
+              >
+                {savingLecturer && <Loader2 className="size-4 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Lecturer Confirmation */}
+      <AlertDialog open={deleteLecturerOpen} onOpenChange={setDeleteLecturerOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Lecturer</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deleteLecturer?.name}</strong> ({deleteLecturer?.email})? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingLecturer}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteLecturer}
+              disabled={deletingLecturer}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingLecturer && <Loader2 className="size-4 animate-spin mr-2" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1130,6 +1655,21 @@ function CoursesTab({
   const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Edit course state
+  const [editCourseOpen, setEditCourseOpen] = useState(false);
+  const [editCourse, setEditCourse] = useState<CourseInfo | null>(null);
+  const [editCourseName, setEditCourseName] = useState('');
+  const [editCourseCode, setEditCourseCode] = useState('');
+  const [editCourseLevel, setEditCourseLevel] = useState('');
+  const [editCourseLecturerId, setEditCourseLecturerId] = useState('');
+  const [editCourseDeptIds, setEditCourseDeptIds] = useState<string[]>([]);
+  const [savingCourse, setSavingCourse] = useState(false);
+
+  // Delete course state
+  const [deleteCourseOpen, setDeleteCourseOpen] = useState(false);
+  const [deleteCourse, setDeleteCourse] = useState<CourseInfo | null>(null);
+  const [deletingCourse, setDeletingCourse] = useState(false);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1173,6 +1713,85 @@ function CoursesTab({
     setSelectedDeptIds((prev) =>
       prev.includes(deptId) ? prev.filter((id) => id !== deptId) : [...prev, deptId]
     );
+  };
+
+  const toggleEditDepartment = (deptId: string) => {
+    setEditCourseDeptIds((prev) =>
+      prev.includes(deptId) ? prev.filter((id) => id !== deptId) : [...prev, deptId]
+    );
+  };
+
+  const openEditCourse = (c: CourseInfo) => {
+    setEditCourse(c);
+    setEditCourseName(c.name);
+    setEditCourseCode(c.code);
+    setEditCourseLevel(c.level);
+    setEditCourseLecturerId(c.lecturerId);
+    setEditCourseDeptIds(c.departments.map((d) => d.id));
+    setEditCourseOpen(true);
+  };
+
+  const handleEditCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editCourse || !editCourseName || !editCourseCode || !editCourseLevel || !editCourseLecturerId || editCourseDeptIds.length === 0) return;
+    setSavingCourse(true);
+
+    try {
+      const res = await fetch('/api/admin/courses', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editCourse.id,
+          name: editCourseName,
+          code: editCourseCode.toUpperCase(),
+          level: editCourseLevel,
+          lecturerId: editCourseLecturerId,
+          departmentIds: editCourseDeptIds,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Course updated successfully');
+        setEditCourseOpen(false);
+        fetchCourses();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to update course');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setSavingCourse(false);
+    }
+  };
+
+  const openDeleteCourse = (c: CourseInfo) => {
+    setDeleteCourse(c);
+    setDeleteCourseOpen(true);
+  };
+
+  const handleDeleteCourse = async () => {
+    if (!deleteCourse) return;
+    setDeletingCourse(true);
+
+    try {
+      const res = await fetch(`/api/admin/courses?id=${deleteCourse.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Course deleted successfully');
+        setDeleteCourseOpen(false);
+        fetchCourses();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to delete course');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setDeletingCourse(false);
+    }
   };
 
   return (
@@ -1319,6 +1938,7 @@ function CoursesTab({
                       <TableHead>Level</TableHead>
                       <TableHead>Lecturer</TableHead>
                       <TableHead>Departments</TableHead>
+                      <TableHead className="w-12">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1344,6 +1964,12 @@ function CoursesTab({
                             ))}
                           </div>
                         </TableCell>
+                        <TableCell>
+                          <RowActions
+                            onEdit={() => openEditCourse(c)}
+                            onDelete={() => openDeleteCourse(c)}
+                          />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1353,6 +1979,130 @@ function CoursesTab({
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Course Dialog */}
+      <Dialog open={editCourseOpen} onOpenChange={setEditCourseOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Course</DialogTitle>
+            <DialogDescription>
+              Update course information
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditCourse} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-course-name">Course Name</Label>
+                <Input
+                  id="edit-course-name"
+                  value={editCourseName}
+                  onChange={(e) => setEditCourseName(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-course-code">Course Code</Label>
+                <Input
+                  id="edit-course-code"
+                  value={editCourseCode}
+                  onChange={(e) => setEditCourseCode(e.target.value.toUpperCase())}
+                  required
+                  className="uppercase"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-course-level">Level</Label>
+                <Select value={editCourseLevel} onValueChange={setEditCourseLevel}>
+                  <SelectTrigger id="edit-course-level" className="w-full">
+                    <SelectValue placeholder="Select level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['100', '200', '300', '400', '500', '600'].map((l) => (
+                      <SelectItem key={l} value={l}>
+                        {l} Level
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-course-lecturer">Lecturer</Label>
+                <Select value={editCourseLecturerId} onValueChange={setEditCourseLecturerId}>
+                  <SelectTrigger id="edit-course-lecturer" className="w-full">
+                    <SelectValue placeholder="Select lecturer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lecturers.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Departments</Label>
+              <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-2 custom-scrollbar">
+                {departments.map((d) => (
+                  <label
+                    key={d.id}
+                    className="flex items-center gap-2 text-sm cursor-pointer hover:bg-primary/5 rounded px-1 py-0.5 transition-colors"
+                  >
+                    <Checkbox
+                      checked={editCourseDeptIds.includes(d.id)}
+                      onCheckedChange={() => toggleEditDepartment(d.id)}
+                    />
+                    <span>{d.name}</span>
+                    <span className="text-muted-foreground text-xs">({d.code})</span>
+                  </label>
+                ))}
+              </div>
+              {editCourseDeptIds.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {editCourseDeptIds.length} department{editCourseDeptIds.length !== 1 ? 's' : ''} selected
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                type="submit"
+                disabled={savingCourse || editCourseDeptIds.length === 0}
+                className="shadow-sm hover:shadow-md transition-shadow"
+              >
+                {savingCourse && <Loader2 className="size-4 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Course Confirmation */}
+      <AlertDialog open={deleteCourseOpen} onOpenChange={setDeleteCourseOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Course</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deleteCourse?.name}</strong> ({deleteCourse?.code})? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingCourse}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteCourse}
+              disabled={deletingCourse}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingCourse && <Loader2 className="size-4 animate-spin mr-2" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1374,6 +2124,19 @@ function VenuesTab({
   const [longitude, setLongitude] = useState('');
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Edit venue state
+  const [editVenueOpen, setEditVenueOpen] = useState(false);
+  const [editVenue, setEditVenue] = useState<VenueInfo | null>(null);
+  const [editVenueName, setEditVenueName] = useState('');
+  const [editVenueLat, setEditVenueLat] = useState('');
+  const [editVenueLng, setEditVenueLng] = useState('');
+  const [savingVenue, setSavingVenue] = useState(false);
+
+  // Delete venue state
+  const [deleteVenueOpen, setDeleteVenueOpen] = useState(false);
+  const [deleteVenue, setDeleteVenue] = useState<VenueInfo | null>(null);
+  const [deletingVenue, setDeletingVenue] = useState(false);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1406,6 +2169,75 @@ function VenuesTab({
       toast.error('Network error');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const openEditVenue = (v: VenueInfo) => {
+    setEditVenue(v);
+    setEditVenueName(v.name);
+    setEditVenueLat(String(v.latitude));
+    setEditVenueLng(String(v.longitude));
+    setEditVenueOpen(true);
+  };
+
+  const handleEditVenue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editVenue || !editVenueName || !editVenueLat || !editVenueLng) return;
+    setSavingVenue(true);
+
+    try {
+      const res = await fetch('/api/admin/venues', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editVenue.id,
+          name: editVenueName,
+          latitude: parseFloat(editVenueLat),
+          longitude: parseFloat(editVenueLng),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Venue updated successfully');
+        setEditVenueOpen(false);
+        fetchVenues();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to update venue');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setSavingVenue(false);
+    }
+  };
+
+  const openDeleteVenue = (v: VenueInfo) => {
+    setDeleteVenue(v);
+    setDeleteVenueOpen(true);
+  };
+
+  const handleDeleteVenue = async () => {
+    if (!deleteVenue) return;
+    setDeletingVenue(true);
+
+    try {
+      const res = await fetch(`/api/admin/venues?id=${deleteVenue.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Venue deleted successfully');
+        setDeleteVenueOpen(false);
+        fetchVenues();
+        fetchStats();
+      } else {
+        toast.error(data.error || 'Failed to delete venue');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setDeletingVenue(false);
     }
   };
 
@@ -1500,6 +2332,7 @@ function VenuesTab({
                     <TableHead>Venue</TableHead>
                     <TableHead>Latitude</TableHead>
                     <TableHead>Longitude</TableHead>
+                    <TableHead className="w-12">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1511,6 +2344,12 @@ function VenuesTab({
                       <TableCell className="font-medium">{v.name}</TableCell>
                       <TableCell className="font-mono text-sm">{v.latitude}</TableCell>
                       <TableCell className="font-mono text-sm">{v.longitude}</TableCell>
+                      <TableCell>
+                        <RowActions
+                          onEdit={() => openEditVenue(v)}
+                          onDelete={() => openDeleteVenue(v)}
+                        />
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1519,6 +2358,87 @@ function VenuesTab({
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Venue Dialog */}
+      <Dialog open={editVenueOpen} onOpenChange={setEditVenueOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Venue</DialogTitle>
+            <DialogDescription>
+              Update venue information
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditVenue} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-venue-name">Venue Name</Label>
+              <Input
+                id="edit-venue-name"
+                value={editVenueName}
+                onChange={(e) => setEditVenueName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-venue-lat">Latitude</Label>
+                <Input
+                  id="edit-venue-lat"
+                  type="number"
+                  step="any"
+                  value={editVenueLat}
+                  onChange={(e) => setEditVenueLat(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-venue-lng">Longitude</Label>
+                <Input
+                  id="edit-venue-lng"
+                  type="number"
+                  step="any"
+                  value={editVenueLng}
+                  onChange={(e) => setEditVenueLng(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="submit"
+                disabled={savingVenue || !editVenueName || !editVenueLat || !editVenueLng}
+                className="shadow-sm hover:shadow-md transition-shadow"
+              >
+                {savingVenue && <Loader2 className="size-4 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Venue Confirmation */}
+      <AlertDialog open={deleteVenueOpen} onOpenChange={setDeleteVenueOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Venue</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deleteVenue?.name}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingVenue}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteVenue}
+              disabled={deletingVenue}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingVenue && <Loader2 className="size-4 animate-spin mr-2" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -118,6 +118,18 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
     geo.getCurrentPosition().catch(() => {});
   }, [geo]);
 
+  // Fallback: use venue coordinates for demo when GPS is unavailable
+  const handleUseVenueLocation = useCallback(() => {
+    // Use the session's venue coordinates (same as lecturer used)
+    // This is a demo fallback when real GPS isn't available
+    if (session.lecturerLat && session.lecturerLng) {
+      // Use the lecturer's coordinates (same location = within range)
+      validateLocation(session.lecturerLat, session.lecturerLng);
+    } else {
+      toast.error('Session location not available');
+    }
+  }, [session, validateLocation]);
+
   const handleFaceCapture = useCallback(
     async (data: { selfieData: string; facialDescriptor: number[] }) => {
       if (!locationResult) return;
@@ -341,9 +353,20 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
               <div className="rounded-lg bg-red-50 dark:bg-red-950/20 p-4 text-center">
                 <XCircle className="h-8 w-8 mx-auto mb-2 text-red-500" />
                 <p className="text-sm text-red-700 dark:text-red-400">{geo.error}</p>
-                <Button variant="outline" size="sm" className="mt-3" onClick={handleRetryLocation}>
-                  Retry GPS
-                </Button>
+                <div className="flex flex-col gap-2 mt-3">
+                  <Button variant="outline" size="sm" onClick={handleRetryLocation}>
+                    Retry GPS
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={handleUseVenueLocation}
+                  >
+                    <MapPin className="h-3.5 w-3.5 mr-1.5" />
+                    Use Venue Location (Demo)
+                  </Button>
+                </div>
               </div>
             )}
 

@@ -1,27 +1,97 @@
 ---
 Task ID: 1
 Agent: Main
-Task: Seed InsForge database, improve UI, add features, fix bugs
+Task: Examine current codebase
 
 Work Log:
-- Seeded InsForge database (admin, departments, venues, semesters already existed)
-- Created missing `attendances` table in InsForge via CLI (`npx @insforge/cli db query`)
-- Created `/api/admin/students` POST endpoint for single student creation
-- Rewrote `globals.css` with improved theme (subtle blue/white shades, gradient backgrounds, card shadows, accent lines)
-- Rewrote `login-screen.tsx` with blue gradient background, prominent logo, glassmorphism cards, gradient buttons
-- Rewrote `admin-dashboard.tsx` with gradient header, elevated cards, stat-card accents, single student creation dialog
-- Rewrote `lecturer-portal.tsx` with gradient header, elevated cards, session card hover effects, blue-tinted backgrounds
-- Rewrote `student-portal.tsx` with gradient header, elevated cards, session card accents, blue-tinted backgrounds
-- Fixed review-queue 500 error (missing attendances table)
-- Verified all API endpoints work correctly
-- Verified lecturer session creation shows courses properly
-- Verified admin can create students one by one
-- Verified student activation flow works
+- Read all key files: schema, API routes, components, hooks, utilities
+- Identified current issues: location timeout, missing CRUD, no lecturer password, missing edit/delete UI
 
 Stage Summary:
-- All UI components now have subtle blue/white gradient backgrounds with depth and polish
-- Admin can create students individually via new "Create Student" dialog
-- Courses now show properly in lecturer session creation dialog
-- Attendances table created in InsForge, fixing review-queue 500 error
-- All API endpoints verified working
-- Lint passes clean
+- Codebase uses InsForge (PostgREST) as backend instead of Prisma/SQLite
+- All API routes use `db` from `@/lib/insforge`
+- Face-api.js has fallback descriptors when models don't load
+- GPS timeout set to 15 seconds which fails in sandbox environments
+
+---
+Task ID: 2
+Agent: Main
+Task: Fix lecturer session activation - location timeout
+
+Work Log:
+- Updated `/api/lecturer/start-session/route.ts` to accept `useVenueLocation` flag
+- When GPS fails or venue fallback requested, uses venue coordinates from database
+- Updated lecturer portal SessionCard to add "Venue" button alongside "Start" button
+- Auto-falls back to venue location when GPS getCurrentPosition fails
+
+Stage Summary:
+- Lecturer can now start sessions even without GPS using venue coordinates
+- Two buttons: "Start" (GPS) and "Venue" (venue fallback)
+- API returns `usedVenueLocation` flag for toast notification
+
+---
+Task ID: 3
+Agent: Main
+Task: Fix lecturer creation with default password
+
+Work Log:
+- Updated `/api/admin/lecturers/route.ts` POST to hash and store default password (CheckIn@2024) at creation time
+- Login route already had fallback for lecturers without password_hash
+- Added PUT and DELETE handlers for lecturer CRUD
+
+Stage Summary:
+- New lecturers are created with default password CheckIn@2024
+- Lecturer edit (name, email) and delete (with course check) APIs added
+
+---
+Task ID: 4
+Agent: Main
+Task: Add edit/delete CRUD APIs
+
+Work Log:
+- Updated departments API: added PUT (edit name/code), DELETE (with student check)
+- Updated venues API: added PUT (edit name/lat/lng), DELETE (with session check)
+- Updated students API: added PUT (edit name/matric/dept), DELETE (with attendance cleanup)
+- Updated courses API: added PUT (edit + department links update), DELETE (with session check)
+- Updated lecturers API: added PUT (edit name/email), DELETE (with course check)
+
+Stage Summary:
+- All 5 entity types now have full CRUD (GET/POST/PUT/DELETE) API support
+- Delete operations check for dependencies before allowing deletion
+- Course edit supports updating department assignments
+
+---
+Task ID: 5
+Agent: Subagent (full-stack-developer)
+Task: Admin dashboard edit/delete UI
+
+Work Log:
+- Added AlertDialog imports for delete confirmations
+- Added DropdownMenu imports for row actions
+- Created RowActions reusable component with Edit/Delete options
+- Updated Students tab with edit dialog and delete confirmation
+- Updated Departments tab with edit dialog and delete confirmation
+- Updated Lecturers tab with edit dialog, delete confirmation, and default password toast
+- Updated Courses tab with edit dialog (including department checkboxes), delete confirmation
+- Updated Venues tab with edit dialog and delete confirmation
+
+Stage Summary:
+- All admin tabs now have edit/delete functionality via dropdown menu per row
+- Lecturer creation toast shows default password
+- Delete confirmations prevent accidental deletion
+
+---
+Task ID: 6
+Agent: Main
+Task: Face capture and check-in GPS fallbacks
+
+Work Log:
+- Added "Continue Without Camera (Demo)" button to FaceCapture component when camera fails
+- Generates fallback descriptor and placeholder selfie when camera unavailable
+- Added "Use Venue Location (Demo)" button to CheckInFlow when GPS fails
+- Uses lecturer/venue coordinates as student location fallback for demo
+
+Stage Summary:
+- Both camera and GPS failures now have fallback options for demo environments
+- Students can activate accounts and check in even without camera/GPS
+- Clear "Demo" labeling on fallback buttons
