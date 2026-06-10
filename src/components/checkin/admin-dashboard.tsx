@@ -87,38 +87,73 @@ import {
   Trash2,
   MoreVertical,
   UserCircle,
+  UserCheck,
+  Activity,
+  Clock,
+  Zap,
 } from 'lucide-react';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 import { ProfilePanel } from './profile-panel';
 
 // ============================================================
-// Stats Card
+// Enhanced Stats Card
 // ============================================================
-function StatCard({
+function EnhancedStatCard({
   title,
   value,
   icon,
   description,
+  iconBg,
+  iconColor,
+  progressValue,
 }: {
   title: string;
-  value: number;
+  value: number | string;
   icon: React.ReactNode;
-  description?: string;
+  description: string;
+  iconBg: string;
+  iconColor: string;
+  progressValue?: number;
 }) {
   return (
-    <Card className="stat-card-accent card-elevated shadow-sm hover:shadow-md transition-shadow duration-200">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="text-2xl font-bold">{value}</p>
-            {description && (
-              <p className="text-xs text-muted-foreground">{description}</p>
-            )}
+    <Card className="card-elevated shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1.5 flex-1 min-w-0">
+            <p className="text-sm font-medium text-muted-foreground truncate">{title}</p>
+            <p className="text-2xl font-bold tracking-tight">{value}</p>
+            <p className="text-xs text-muted-foreground truncate">{description}</p>
           </div>
-          <div className="flex items-center justify-center size-10 rounded-lg bg-primary/10 text-primary">
+          <div className={`flex items-center justify-center size-11 rounded-xl ${iconBg} ${iconColor} shrink-0`}>
             {icon}
           </div>
         </div>
+        {progressValue !== undefined && (
+          <div className="mt-3 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Progress</span>
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{progressValue}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-700 ease-out"
+                style={{ width: `${progressValue}%` }}
+              />
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -134,10 +169,16 @@ export function AdminDashboard() {
     totalDepartments: number;
     totalStudents: number;
     activatedStudents: number;
+    activationRate: number;
     totalLecturers: number;
     totalCourses: number;
     totalVenues: number;
     totalSessions: number;
+    activeSessions: number;
+    completedSessions: number;
+    scheduledSessions: number;
+    departmentStudentCounts: Array<{ id: string; name: string; code: string; studentCount: number; activatedCount: number }>;
+    recentSessions: Array<{ id: string; title: string; courseName: string; courseCode: string; venueName: string; status: string; scheduledAt: string }>;
   } | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
@@ -268,55 +309,289 @@ export function AdminDashboard() {
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6 w-full">
-        {/* Stats Row */}
+        {/* Enhanced Stats Row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {statsLoading ? (
-            Array.from({ length: 7 }).map((_, i) => (
+            Array.from({ length: 8 }).map((_, i) => (
               <Card key={i} className="card-elevated">
-                <CardContent className="p-4 space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-8 w-12" />
+                <CardContent className="p-5 space-y-2">
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-3 w-28" />
                 </CardContent>
               </Card>
             ))
           ) : (
             stats && (
               <>
-                <StatCard
+                <EnhancedStatCard
                   title="Departments"
                   value={stats.totalDepartments}
                   icon={<Building2 className="size-5" />}
+                  description="Academic departments"
+                  iconBg="bg-blue-50 dark:bg-blue-950/50"
+                  iconColor="text-blue-600 dark:text-blue-400"
                 />
-                <StatCard
+                <EnhancedStatCard
                   title="Students"
                   value={stats.totalStudents}
                   icon={<GraduationCap className="size-5" />}
-                  description={`${stats.activatedStudents} activated`}
+                  description={`${stats.activatedStudents} of ${stats.totalStudents} activated`}
+                  iconBg="bg-emerald-50 dark:bg-emerald-950/50"
+                  iconColor="text-emerald-600 dark:text-emerald-400"
                 />
-                <StatCard
+                <EnhancedStatCard
                   title="Lecturers"
                   value={stats.totalLecturers}
                   icon={<Users className="size-5" />}
+                  description="Registered lecturers"
+                  iconBg="bg-violet-50 dark:bg-violet-950/50"
+                  iconColor="text-violet-600 dark:text-violet-400"
                 />
-                <StatCard
+                <EnhancedStatCard
                   title="Courses"
                   value={stats.totalCourses}
                   icon={<BookOpen className="size-5" />}
+                  description="Available courses"
+                  iconBg="bg-amber-50 dark:bg-amber-950/50"
+                  iconColor="text-amber-600 dark:text-amber-400"
                 />
-                <StatCard
+                <EnhancedStatCard
                   title="Venues"
                   value={stats.totalVenues}
                   icon={<MapPin className="size-5" />}
+                  description="Check-in locations"
+                  iconBg="bg-rose-50 dark:bg-rose-950/50"
+                  iconColor="text-rose-600 dark:text-rose-400"
                 />
-                <StatCard
+                <EnhancedStatCard
                   title="Sessions"
                   value={stats.totalSessions}
                   icon={<CalendarDays className="size-5" />}
+                  description={`${stats.completedSessions} completed, ${stats.scheduledSessions} scheduled`}
+                  iconBg="bg-cyan-50 dark:bg-cyan-950/50"
+                  iconColor="text-cyan-600 dark:text-cyan-400"
+                />
+                <EnhancedStatCard
+                  title="Active Now"
+                  value={stats.activeSessions}
+                  icon={<Zap className="size-5" />}
+                  description="Currently running sessions"
+                  iconBg="bg-orange-50 dark:bg-orange-950/50"
+                  iconColor="text-orange-600 dark:text-orange-400"
+                />
+                <EnhancedStatCard
+                  title="Activation Rate"
+                  value={`${stats.activationRate}%`}
+                  icon={<UserCheck className="size-5" />}
+                  description={`${stats.activatedStudents} of ${stats.totalStudents} students`}
+                  iconBg="bg-emerald-50 dark:bg-emerald-950/50"
+                  iconColor="text-emerald-600 dark:text-emerald-400"
+                  progressValue={stats.activationRate}
                 />
               </>
             )
           )}
         </div>
+
+        {/* Charts Row */}
+        {!statsLoading && stats && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Student Activation Donut Chart */}
+            <Card className="card-elevated shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <UserCheck className="size-4 text-emerald-500" />
+                  Student Activation Rate
+                </CardTitle>
+                <CardDescription>
+                  Activated vs. not activated students
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Activated', value: stats.activatedStudents, color: '#10b981' },
+                          { name: 'Not Activated', value: stats.totalStudents - stats.activatedStudents, color: '#f59e0b' },
+                        ]}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={4}
+                        dataKey="value"
+                        strokeWidth={0}
+                      >
+                        <Cell fill="#10b981" />
+                        <Cell fill="#f59e0b" />
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number, name: string) => [`${value} students`, name]}
+                        contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '13px' }}
+                      />
+                      <Legend
+                        verticalAlign="bottom"
+                        iconType="circle"
+                        iconSize={8}
+                        formatter={(value: string) => (
+                          <span className="text-sm text-muted-foreground">{value}</span>
+                        )}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex items-center justify-center gap-6 mt-2">
+                  <div className="flex items-center gap-2">
+                    <div className="size-3 rounded-full bg-emerald-500" />
+                    <span className="text-sm text-muted-foreground">Activated ({stats.activatedStudents})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="size-3 rounded-full bg-amber-500" />
+                    <span className="text-sm text-muted-foreground">Not Activated ({stats.totalStudents - stats.activatedStudents})</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Department Distribution Bar Chart */}
+            <Card className="card-elevated shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Building2 className="size-4 text-blue-500" />
+                  Department Distribution
+                </CardTitle>
+                <CardDescription>
+                  Students per department with activation breakdown
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-64">
+                  {stats.departmentStudentCounts.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={stats.departmentStudentCounts.map((d) => ({
+                          name: d.code || d.name,
+                          Activated: d.activatedCount,
+                          'Not Activated': d.studentCount - d.activatedCount,
+                        }))}
+                        margin={{ top: 5, right: 10, left: -10, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={{ stroke: '#e5e7eb' }}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={{ stroke: '#e5e7eb' }}
+                          allowDecimals={false}
+                        />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '13px' }}
+                        />
+                        <Legend
+                          verticalAlign="top"
+                          iconType="circle"
+                          iconSize={8}
+                          wrapperStyle={{ fontSize: '12px', paddingBottom: '8px' }}
+                        />
+                        <Bar dataKey="Activated" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="Not Activated" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                      <div className="text-center">
+                        <Building2 className="size-10 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">No departments yet</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Recent Sessions Activity */}
+        {!statsLoading && stats && stats.recentSessions.length > 0 && (
+          <Card className="card-elevated shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Activity className="size-4 text-cyan-500" />
+                Recent Activity
+              </CardTitle>
+              <CardDescription>
+                Latest session activity across all courses
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {stats.recentSessions.map((session) => {
+                  const statusConfig: Record<string, { label: string; className: string }> = {
+                    active: {
+                      label: 'Active',
+                      className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
+                    },
+                    completed: {
+                      label: 'Completed',
+                      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800',
+                    },
+                    scheduled: {
+                      label: 'Scheduled',
+                      className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800',
+                    },
+                    ended: {
+                      label: 'Ended',
+                      className: 'bg-secondary text-secondary-foreground',
+                    },
+                  };
+                  const config = statusConfig[session.status] || statusConfig.scheduled;
+                  const scheduledDate = session.scheduledAt
+                    ? new Date(session.scheduledAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'No date';
+
+                  return (
+                    <div
+                      key={session.id}
+                      className="flex items-center gap-4 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-center size-10 rounded-lg bg-cyan-50 dark:bg-cyan-950/50 shrink-0">
+                        <Clock className="size-5 text-cyan-600 dark:text-cyan-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-sm truncate">{session.title}</p>
+                          <Badge className={`text-xs shrink-0 ${config.className}`}>
+                            {config.label}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                          <span className="truncate">{session.courseCode} — {session.courseName}</span>
+                          <span className="shrink-0">📍 {session.venueName}</span>
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground shrink-0 hidden sm:block">
+                        {scheduledDate}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Tabs */}
         <Tabs defaultValue="students" className="space-y-4">

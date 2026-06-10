@@ -24,6 +24,10 @@ import {
   ArrowLeft,
   RefreshCw,
   UserCircle,
+  Activity,
+  BookOpen,
+  ClipboardList,
+  TrendingUp,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +60,7 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
+import { PieChart, Pie, Cell } from 'recharts';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/hooks/use-auth';
 import { useGeoLocation } from '@/hooks/use-geo-location';
@@ -946,8 +951,37 @@ export function LecturerPortal() {
   const [analyticsSessionId, setAnalyticsSessionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('sessions');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lecturerStats, setLecturerStats] = useState<{
+    totalSessions: number;
+    activeSessions: number;
+    completedSessions: number;
+    scheduledSessions: number;
+    totalCourses: number;
+    totalPresent: number;
+    totalAbsent: number;
+    totalPending: number;
+    totalRejected: number;
+    totalCheckIns: number;
+  } | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
 
   const lecturerId = user?.id || '';
+
+  // Fetch lecturer stats
+  const fetchStats = useCallback(async () => {
+    if (!lecturerId) return;
+    try {
+      const res = await fetch(`/api/lecturer/stats?lecturerId=${lecturerId}`);
+      const json = await res.json();
+      if (json.success && json.data) {
+        setLecturerStats(json.data);
+      }
+    } catch {
+      // Silent fail
+    } finally {
+      setLoadingStats(false);
+    }
+  }, [lecturerId]);
 
   // Fetch lecturer's assigned courses independently
   const fetchCourses = useCallback(async () => {
@@ -985,18 +1019,25 @@ export function LecturerPortal() {
   useEffect(() => {
     fetchCourses();
     fetchSessions();
-  }, [fetchCourses, fetchSessions]);
+    fetchStats();
+  }, [fetchCourses, fetchSessions, fetchStats]);
 
   // Poll when there's an active session
   useEffect(() => {
     const hasActive = sessions.some((s) => s.status === 'active');
     if (hasActive) {
       intervalRef.current = setInterval(fetchSessions, SESSION_POLL_INTERVAL);
+      // Also refresh stats when polling
+      const statsInterval = setInterval(fetchStats, SESSION_POLL_INTERVAL);
+      return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        clearInterval(statsInterval);
+      };
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [sessions, fetchSessions]);
+  }, [sessions, fetchSessions, fetchStats]);
 
   const handleLogout = useCallback(() => {
     logout();
@@ -1057,6 +1098,145 @@ export function LecturerPortal() {
           <div className="max-w-7xl mx-auto flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
             <ClipboardCheck className="h-4 w-4 shrink-0" />
             <span>No courses assigned yet. Ask the admin to assign courses to your account before creating sessions.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Overview Section */}
+      {!loadingStats && lecturerStats && (
+        <div className="px-4 pt-4 md:px-6 md:pt-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {/* Total Sessions */}
+            <Card className="card-elevated">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/30">
+                    <ClipboardList className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{lecturerStats.totalSessions}</p>
+                    <p className="text-xs text-muted-foreground">Total Sessions</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Active Sessions */}
+            <Card className="card-elevated">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+                    <Activity className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{lecturerStats.activeSessions}</p>
+                    <p className="text-xs text-muted-foreground">Active Sessions</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Courses */}
+            <Card className="card-elevated">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/30">
+                    <BookOpen className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{lecturerStats.totalCourses}</p>
+                    <p className="text-xs text-muted-foreground">Courses</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Total Check-ins */}
+            <Card className="card-elevated">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/30">
+                    <Users className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{lecturerStats.totalCheckIns}</p>
+                    <p className="text-xs text-muted-foreground">Total Check-ins</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Attendance Rate */}
+            <Card className="card-elevated col-span-2 md:col-span-1">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+                    <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                      {lecturerStats.totalCheckIns > 0
+                        ? `${Math.round((lecturerStats.totalPresent / lecturerStats.totalCheckIns) * 100)}%`
+                        : '0%'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Attendance Rate</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Session Status Distribution */}
+          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="flex items-center gap-2">
+              {(() => {
+                const chartData = [
+                  { name: 'Scheduled', value: lecturerStats.scheduledSessions, color: '#f59e0b' },
+                  { name: 'Active', value: lecturerStats.activeSessions, color: '#10b981' },
+                  { name: 'Completed', value: lecturerStats.completedSessions, color: '#6b7280' },
+                ].filter((d) => d.value > 0);
+
+                if (chartData.length === 0) {
+                  return (
+                    <div className="text-sm text-muted-foreground">
+                      No sessions yet
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="flex items-center gap-3">
+                    <PieChart width={48} height={48}>
+                      <Pie
+                        data={chartData}
+                        cx={24}
+                        cy={24}
+                        innerRadius={12}
+                        outerRadius={22}
+                        paddingAngle={2}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {chartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30">
+                        Scheduled: {lecturerStats.scheduledSessions}
+                      </Badge>
+                      <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30">
+                        Active: {lecturerStats.activeSessions}
+                      </Badge>
+                      <Badge variant="outline" className="border-gray-300 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-950/30">
+                        Completed: {lecturerStats.completedSessions}
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}

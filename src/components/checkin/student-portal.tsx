@@ -29,7 +29,12 @@ import {
   Fingerprint,
   LogIn,
   UserCircle,
+  TrendingUp,
+  UserCheck,
+  UserX,
+  CalendarClock,
 } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -37,6 +42,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/hooks/use-auth';
 import { FaceCapture } from '@/components/checkin/face-capture';
 import { CheckInFlow } from '@/components/checkin/check-in-flow';
@@ -58,6 +64,26 @@ interface SessionWithAttendance extends SessionInfo {
     similarityScore: number | null;
     checkInTime: string | null;
   } | null;
+}
+
+interface StudentStats {
+  totalSessions: number;
+  totalPresent: number;
+  totalAbsent: number;
+  totalPending: number;
+  totalRejected: number;
+  attendanceRate: number;
+  upcomingSessions: number;
+  recentAttendance: Array<{
+    id: string;
+    sessionId: string;
+    sessionTitle: string;
+    courseName: string;
+    status: string;
+    similarityScore: number | null;
+    checkInTime: string | null;
+    scheduledAt: string | null;
+  }>;
 }
 
 // ============================================================
@@ -394,6 +420,8 @@ function ActivePortal() {
   const [loading, setLoading] = useState(true);
   const [activeCheckIn, setActiveCheckIn] = useState<SessionInfo | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [stats, setStats] = useState<StudentStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch sessions
@@ -414,9 +442,28 @@ function ActivePortal() {
     }
   }, [user?.id]);
 
+  // Fetch stats
+  const fetchStats = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      const response = await fetch(`/api/student/stats?studentId=${user.id}`);
+      const result: ApiResponse<StudentStats> = await response.json();
+
+      if (result.success && result.data) {
+        setStats(result.data);
+      }
+    } catch {
+      // Silently fail - stats are not critical
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [user?.id]);
+
   // Initial fetch + polling
   useEffect(() => {
     fetchSessions();
+    fetchStats();
 
     pollRef.current = setInterval(fetchSessions, SESSION_POLL_INTERVAL);
 
@@ -425,14 +472,15 @@ function ActivePortal() {
         clearInterval(pollRef.current);
       }
     };
-  }, [fetchSessions]);
+  }, [fetchSessions, fetchStats]);
 
   // Handle check-in completion
   const handleCheckInComplete = useCallback(
     (result: CheckInResult) => {
       setActiveCheckIn(null);
-      // Refresh sessions to get updated attendance status
+      // Refresh sessions and stats to get updated attendance status
       fetchSessions();
+      fetchStats();
 
       if (result.success) {
         toast.success(result.message);
@@ -440,7 +488,7 @@ function ActivePortal() {
         toast.error(result.message);
       }
     },
-    [fetchSessions]
+    [fetchSessions, fetchStats]
   );
 
   const handleLogout = useCallback(() => {
@@ -537,7 +585,7 @@ function ActivePortal() {
           </div>
         )}
 
-        {!loading && sessions.length === 0 && (
+        {!loading && sessions.length === 0 && stats && stats.totalSessions === 0 && (
           <div className="text-center py-16">
             <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-blue-50/80 dark:bg-blue-950/30 mb-4">
               <BookOpen className="h-8 w-8 text-primary/40" />
@@ -547,6 +595,188 @@ function ActivePortal() {
               Sessions will appear here when a lecturer creates one for your department
             </p>
           </div>
+        )}
+
+        {/* Attendance Stats Overview */}
+        {!loading && stats && stats.totalSessions > 0 && (
+          <section className="space-y-4">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              Attendance Overview
+            </h2>
+
+            {/* Stat Cards Row */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Attendance Rate Card */}
+              <Card className="card-elevated border-0 shadow-sm col-span-2 lg:col-span-1">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Attendance Rate</p>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-bold tracking-tight text-foreground">
+                          {statsLoading ? '—' : stats.attendanceRate}
+                        </span>
+                        <span className="text-sm text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-950/50">
+                      <TrendingUp className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                  </div>
+                  <Progress
+                    value={stats.attendanceRate}
+                    className="h-1.5 mt-3 bg-emerald-100 dark:bg-emerald-950/50"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    {stats.totalPresent} of {stats.totalPresent + stats.totalAbsent + stats.totalRejected} sessions attended
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Present Card */}
+              <Card className="card-elevated border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Present</p>
+                      <p className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+                        {statsLoading ? '—' : stats.totalPresent}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-950/50">
+                      <UserCheck className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Checked in successfully
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Absent Card */}
+              <Card className="card-elevated border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Absent</p>
+                      <p className="text-2xl font-bold tracking-tight text-red-600 dark:text-red-400">
+                        {statsLoading ? '—' : stats.totalAbsent}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-950/50">
+                      <UserX className="h-4.5 w-4.5 text-red-600 dark:text-red-400" />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Missed sessions
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Upcoming Card */}
+              <Card className="card-elevated border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Upcoming</p>
+                      <p className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
+                        {statsLoading ? '—' : stats.upcomingSessions}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 dark:bg-amber-950/50">
+                      <CalendarClock className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Scheduled sessions
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Donut Chart + Recent Attendance */}
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+              {/* Donut Chart */}
+              <Card className="card-elevated border-0 shadow-sm sm:col-span-2">
+                <CardContent className="p-4">
+                  <p className="text-xs font-medium text-muted-foreground mb-3">Distribution</p>
+                  <div className="h-[140px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: 'Present', value: stats.totalPresent, color: '#10b981' },
+                            { name: 'Absent', value: stats.totalAbsent, color: '#ef4444' },
+                            { name: 'Pending', value: stats.totalPending, color: '#f59e0b' },
+                            { name: 'Rejected', value: stats.totalRejected, color: '#8b5cf6' },
+                          ].filter((d) => d.value > 0)}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={35}
+                          outerRadius={55}
+                          paddingAngle={3}
+                          dataKey="value"
+                          stroke="none"
+                        >
+                          {[
+                            { name: 'Present', value: stats.totalPresent, color: '#10b981' },
+                            { name: 'Absent', value: stats.totalAbsent, color: '#ef4444' },
+                            { name: 'Pending', value: stats.totalPending, color: '#f59e0b' },
+                            { name: 'Rejected', value: stats.totalRejected, color: '#8b5cf6' },
+                          ]
+                            .filter((d) => d.value > 0)
+                            .map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: '8px',
+                            border: 'none',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            fontSize: '12px',
+                          }}
+                          formatter={(value: number, name: string) => [`${value}`, name]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-1">
+                    {[
+                      { label: 'Present', color: 'bg-emerald-500' },
+                      { label: 'Absent', color: 'bg-red-500' },
+                      { label: 'Pending', color: 'bg-amber-500' },
+                      { label: 'Rejected', color: 'bg-violet-500' },
+                    ].map((item) => (
+                      <div key={item.label} className="flex items-center gap-1.5">
+                        <span className={`size-2 rounded-full ${item.color}`} />
+                        <span className="text-[10px] text-muted-foreground">{item.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Recent Attendance */}
+              <Card className="card-elevated border-0 shadow-sm sm:col-span-3">
+                <CardContent className="p-4">
+                  <p className="text-xs font-medium text-muted-foreground mb-3">Recent Attendance</p>
+                  {stats.recentAttendance.length === 0 ? (
+                    <div className="flex items-center justify-center h-[140px] text-sm text-muted-foreground">
+                      No attendance records yet
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
+                      {stats.recentAttendance.map((record) => (
+                        <RecentAttendanceItem key={record.id} record={record} />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </section>
         )}
 
         {!loading && sessions.length > 0 && (
@@ -615,6 +845,97 @@ function ActivePortal() {
           checkIn — Student Attendance Platform
         </div>
       </footer>
+    </div>
+  );
+}
+
+// ============================================================
+// Recent Attendance Item
+// ============================================================
+
+interface RecentAttendanceItemProps {
+  record: {
+    id: string;
+    sessionId: string;
+    sessionTitle: string;
+    courseName: string;
+    status: string;
+    similarityScore: number | null;
+    checkInTime: string | null;
+    scheduledAt: string | null;
+  };
+}
+
+function RecentAttendanceItem({ record }: RecentAttendanceItemProps) {
+  const getStatusBadge = () => {
+    switch (record.status) {
+      case 'present':
+        return (
+          <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] px-1.5 py-0 h-5 gap-0.5">
+            <CheckCircle2 className="h-2.5 w-2.5" />
+            Present
+          </Badge>
+        );
+      case 'pending_review':
+        return (
+          <Badge className="bg-amber-500 hover:bg-amber-600 text-[10px] px-1.5 py-0 h-5 gap-0.5">
+            <AlertTriangle className="h-2.5 w-2.5" />
+            Review
+          </Badge>
+        );
+      case 'absent':
+        return (
+          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
+            <XCircle className="h-2.5 w-2.5" />
+            Absent
+          </Badge>
+        );
+      case 'rejected_identity':
+        return (
+          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
+            <XCircle className="h-2.5 w-2.5" />
+            Rejected
+          </Badge>
+        );
+      case 'rejected_location':
+        return (
+          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
+            <MapPin className="h-2.5 w-2.5" />
+            Rejected
+          </Badge>
+        );
+      case 'pending':
+      default:
+        return (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
+            <Clock className="h-2.5 w-2.5" />
+            Pending
+          </Badge>
+        );
+    }
+  };
+
+  const formatTime = (dateStr: string | null) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const checkInTime = formatTime(record.checkInTime);
+  const scheduledTime = formatTime(record.scheduledAt);
+
+  return (
+    <div className="flex items-center gap-3 py-1.5">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium truncate leading-tight">{record.sessionTitle}</p>
+        <p className="text-[11px] text-muted-foreground truncate">{record.courseName}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-[10px] text-muted-foreground">
+          {checkInTime || scheduledTime || '—'}
+        </span>
+        {getStatusBadge()}
+      </div>
     </div>
   );
 }

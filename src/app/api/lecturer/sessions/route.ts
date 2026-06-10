@@ -133,6 +133,7 @@ export async function GET(request: NextRequest) {
           }),
           attendanceCounts: attendanceCountMap.get(session.id as string) || {},
           totalAttendances: totalAttendanceMap.get(session.id as string) || 0,
+          attendanceCount: totalAttendanceMap.get(session.id as string) || 0,
           totalTargetStudents,
         };
       })
