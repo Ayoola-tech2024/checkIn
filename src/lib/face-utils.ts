@@ -5,31 +5,48 @@
 import type { FacialLandmarkData } from './types';
 
 /**
- * Calculate Euclidean distance between two facial descriptor vectors.
+ * Calculate cosine similarity between two facial descriptor vectors.
  * Returns a similarity score from 0 to 100 (100 = identical).
+ * 
+ * Uses cosine similarity which works better for both:
+ * - Real face-api.js descriptors (128-float vectors)
+ * - Image-hash descriptors (normalized luminance-based vectors)
  */
 export function calculateSimilarity(
   descriptor1: number[],
   descriptor2: number[]
 ): number {
-  if (descriptor1.length !== descriptor2.length) {
+  if (descriptor1.length !== descriptor2.length || descriptor1.length === 0) {
     return 0;
   }
 
-  let sum = 0;
+  // Compute dot product and magnitudes
+  let dotProduct = 0;
+  let mag1 = 0;
+  let mag2 = 0;
+
   for (let i = 0; i < descriptor1.length; i++) {
-    const diff = descriptor1[i] - descriptor2[i];
-    sum += diff * diff;
+    dotProduct += descriptor1[i] * descriptor2[i];
+    mag1 += descriptor1[i] * descriptor1[i];
+    mag2 += descriptor2[i] * descriptor2[i];
   }
-  
-  const distance = Math.sqrt(sum);
-  
-  // Convert distance to similarity score (0-100)
-  // Typical face-api.js distances: 0-1.0 for same person, >0.6 for different
-  // We map: distance 0 -> similarity 100, distance 1.0+ -> similarity 0
-  const maxDistance = 1.0;
-  const similarity = Math.max(0, Math.min(100, (1 - distance / maxDistance) * 100));
-  
+
+  mag1 = Math.sqrt(mag1);
+  mag2 = Math.sqrt(mag2);
+
+  if (mag1 === 0 || mag2 === 0) {
+    return 0;
+  }
+
+  // Cosine similarity: -1 to 1 (1 = identical direction)
+  const cosineSim = dotProduct / (mag1 * mag2);
+
+  // Map cosine similarity from [-1, 1] to [0, 100]
+  // cosineSim = 1 → 100% (same person)
+  // cosineSim = 0 → 50% (unrelated)
+  // cosineSim = -1 → 0% (opposite)
+  const similarity = Math.max(0, Math.min(100, (cosineSim + 1) * 50));
+
   return Math.round(similarity * 100) / 100;
 }
 
