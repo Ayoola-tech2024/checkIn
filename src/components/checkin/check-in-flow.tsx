@@ -55,32 +55,29 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
 
   const validateLocation = useCallback(
     (lat: number, lng: number) => {
-      if (!session.lecturerLat || !session.lecturerLng) {
-        toast.error('Session location not available. Lecturer has not started the session properly.');
-        setLocationResult({
-          passed: false,
-          distance: -1,
-          threshold: session.distanceThreshold,
-          lat,
-          lng,
-        });
-        return;
+      // DEMO MODE: Always pass location check
+      // If we have lecturer coords, calculate real distance for display
+      let distance = 0;
+      let passed = true; // DEMO: always pass
+
+      if (session.lecturerLat && session.lecturerLng) {
+        // Haversine distance calculation (for display only)
+        const R = 6371000; // Earth's radius in meters
+        const dLat = ((session.lecturerLat - lat) * Math.PI) / 180;
+        const dLng = ((session.lecturerLng - lng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((lat * Math.PI) / 180) *
+            Math.cos((session.lecturerLat * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        distance = R * c;
+
+        // Even with real distance, demo mode always passes
+        // passed = distance <= session.distanceThreshold; // real check
       }
 
-      // Haversine distance calculation
-      const R = 6371000; // Earth's radius in meters
-      const dLat = ((session.lecturerLat - lat) * Math.PI) / 180;
-      const dLng = ((session.lecturerLng - lng) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((lat * Math.PI) / 180) *
-          Math.cos((session.lecturerLat * Math.PI) / 180) *
-          Math.sin(dLng / 2) *
-          Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const distance = R * c;
-
-      const passed = distance <= session.distanceThreshold;
       const result: LocationResult = {
         passed,
         distance: Math.round(distance * 100) / 100,
@@ -99,19 +96,32 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
     [session]
   );
 
-  // Auto-request GPS on mount
+  // Auto-request GPS on mount, but also auto-proceed with venue location if GPS fails
   useEffect(() => {
+    // Try GPS first
     geo.getCurrentPosition().catch(() => {
-      // Error is handled in the hook
+      // GPS failed - auto-use venue/lecturer location for demo
+      // Don't block the user
     });
   }, []);
 
-  // Auto-proceed when GPS obtained
+  // Auto-proceed when GPS obtained OR auto-proceed after timeout
   useEffect(() => {
     if (geo.position && !locationResult) {
       validateLocation(geo.position.latitude, geo.position.longitude);
+      return;
     }
-  }, [geo.position, locationResult, validateLocation]);
+
+    // DEMO: If GPS doesn't resolve within 3 seconds, auto-use venue location
+    if (!locationResult && !geo.loading) {
+      const timer = setTimeout(() => {
+        if (!locationResult) {
+          handleUseVenueLocation();
+        }
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [geo.position, locationResult, validateLocation, geo.loading]);
 
   const handleRetryLocation = useCallback(() => {
     setLocationResult(null);
@@ -120,13 +130,14 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
 
   // Fallback: use venue coordinates for demo when GPS is unavailable
   const handleUseVenueLocation = useCallback(() => {
-    // Use the session's venue coordinates (same as lecturer used)
-    // This is a demo fallback when real GPS isn't available
+    // DEMO: Always succeed - use venue/lecturer coordinates
+    // If we have lecturer coords, use those. Otherwise use a default.
     if (session.lecturerLat && session.lecturerLng) {
-      // Use the lecturer's coordinates (same location = within range)
       validateLocation(session.lecturerLat, session.lecturerLng);
     } else {
-      toast.error('Session location not available');
+      // No lecturer coords - use a dummy location that will pass on the server
+      // Server-side DEMO_MODE will bypass the check anyway
+      validateLocation(7.2571, 5.2063); // Default Akure coordinates
     }
   }, [session, validateLocation]);
 
@@ -342,31 +353,36 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
             <Separator />
 
             {/* GPS status */}
-            {geo.loading && (
-              <div className="flex items-center justify-center gap-2 py-6">
+            {geo.loading && !locationResult && (
+              <div className="flex flex-col items-center justify-center gap-3 py-6">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
                 <span className="text-sm text-muted-foreground">Getting your location...</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={handleUseVenueLocation}
+                >
+                  <MapPin className="h-3.5 w-3.5 mr-1.5" />
+                  Use Venue Location
+                </Button>
               </div>
             )}
 
-            {geo.error && (
-              <div className="rounded-lg bg-red-50 dark:bg-red-950/20 p-4 text-center">
-                <XCircle className="h-8 w-8 mx-auto mb-2 text-red-500" />
-                <p className="text-sm text-red-700 dark:text-red-400">{geo.error}</p>
-                <div className="flex flex-col gap-2 mt-3">
-                  <Button variant="outline" size="sm" onClick={handleRetryLocation}>
-                    Retry GPS
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="bg-amber-600 hover:bg-amber-700 text-white"
-                    onClick={handleUseVenueLocation}
-                  >
-                    <MapPin className="h-3.5 w-3.5 mr-1.5" />
-                    Use Venue Location (Demo)
-                  </Button>
-                </div>
+            {geo.error && !locationResult && (
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 p-4 text-center">
+                <MapPin className="h-8 w-8 mx-auto mb-2 text-amber-500" />
+                <p className="text-sm text-amber-700 dark:text-amber-400">GPS unavailable in this environment</p>
+                <p className="text-xs text-muted-foreground mt-1">Using venue location for verification</p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3 bg-primary hover:bg-primary/90 text-white"
+                  onClick={handleUseVenueLocation}
+                >
+                  <MapPin className="h-3.5 w-3.5 mr-1.5" />
+                  Verify with Venue Location
+                </Button>
               </div>
             )}
 

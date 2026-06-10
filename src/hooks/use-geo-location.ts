@@ -81,8 +81,8 @@ export function useGeoLocation(): UseGeoLocationReturn {
         },
         {
           enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0,
+          timeout: 8000, // Reduced from 15s for faster demo fallback
+          maximumAge: 60000, // Allow cached position up to 60s for demo
         }
       );
     });

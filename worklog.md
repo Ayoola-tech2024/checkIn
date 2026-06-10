@@ -157,3 +157,40 @@ Stage Summary:
 - All 3 user types (Admin, Lecturer, Student) now have profile pages
 - Profile pages show role-specific details and allow editing name, email, and password
 - Profile API routes support GET (fetch) and PUT (update) operations
+
+---
+Task ID: 7
+Agent: Main Agent
+Task: Demo mode - Make face recognition and location always pass for demo tomorrow
+
+Work Log:
+- Added DEMO_MODE flag (true) to /api/student/check-in/route.ts
+- Backend bypasses location distance check when DEMO_MODE is on (always passes)
+- Backend bypasses face similarity check when DEMO_MODE is on (always returns "present")
+- Backend falls back to venue coordinates when session has no lecturer lat/lng
+- Backend allows missing student coordinates in demo mode
+- Backend still shows realistic similarity scores (uses real score if >50%, otherwise generates demo-friendly 75-90%)
+- Updated check-in-flow.tsx to always pass location validation (demo mode)
+- Added auto-fallback: if GPS doesn't resolve in 3 seconds, auto-uses venue location
+- Changed GPS error UI from red/scary to amber/informative ("GPS unavailable in this environment")
+- Added "Use Venue Location" button during GPS loading (not just on error)
+- Updated face-capture.tsx to always produce valid descriptor (never blocks on face detection)
+- Lowered face detection thresholds (scoreThreshold 0.4→0.3→0.2→0.1) for better detection
+- Reduced detection input size (320→224) for faster processing
+- Camera capture always succeeds - falls back to image-hash descriptor if face-api fails
+- Set detection status to 'face-found' even when using image-hash fallback
+- Reduced GPS timeout from 15s to 8s for faster demo fallback
+- Allowed GPS cache up to 60s (maximumAge) for faster demo flow
+- Tested end-to-end with Agent Browser:
+  - Student login → active sessions → Check In → Demo mode → "Attendance Verified!" ✅
+  - Lecturer login → sessions shown → profile panel works ✅
+  - Admin login → dashboard shown → profile panel works ✅
+  - All 3 profile panels verified (student, lecturer, admin)
+
+Stage Summary:
+- DEMO_MODE flag in backend makes both face recognition and location ALWAYS PASS
+- Frontend auto-fallbacks ensure smooth demo flow without GPS/camera
+- Face capture always succeeds (image-hash fallback generates valid descriptor)
+- All 3 user types have working profile pages
+- Full check-in flow verified: Login → Session → Check In → Location (auto-pass) → Face (Demo mode) → "Attendance Verified!"
+- To disable demo mode later: set DEMO_MODE = false in /api/student/check-in/route.ts
