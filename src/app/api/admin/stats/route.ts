@@ -8,12 +8,14 @@ export async function GET() {
       studentsResult,
       activatedStudentsResult,
       lecturersResult,
+      hodResult,
       coursesResult,
       venuesResult,
       sessionsResult,
       activeSessionsResult,
       completedSessionsResult,
       scheduledSessionsResult,
+      schoolsResult,
       departmentCountsResult,
       recentSessionsResult,
     ] = await Promise.all([
@@ -21,12 +23,14 @@ export async function GET() {
       db.from('students').select('id'),
       db.from('students').select('id').eq('activated', true),
       db.from('lecturers').select('id'),
+      db.from('lecturers').select('id').eq('is_hod', true),
       db.from('courses').select('id'),
       db.from('venues').select('id'),
       db.from('sessions').select('id'),
       db.from('sessions').select('id').eq('status', 'active'),
       db.from('sessions').select('id').eq('status', 'completed'),
       db.from('sessions').select('id').eq('status', 'scheduled'),
+      db.from('schools').select('id'),
       db.from('departments').select('id, name, code'),
       db.from('sessions')
         .select('*')
@@ -95,11 +99,13 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
+        totalSchools: schoolsResult.data?.length || 0,
         totalDepartments: departmentsResult.data?.length || 0,
         totalStudents,
         activatedStudents,
         activationRate,
         totalLecturers: lecturersResult.data?.length || 0,
+        totalHods: hodResult.data?.length || 0,
         totalCourses: coursesResult.data?.length || 0,
         totalVenues: venuesResult.data?.length || 0,
         totalSessions: sessionsResult.data?.length || 0,

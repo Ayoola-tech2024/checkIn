@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import type { SemesterInfo, CourseInfo, ApiResponse } from '@/lib/types';
+import type { SemesterInfo, CourseInfo, ApiResponse, ValidLevel } from '@/lib/types';
 
 interface GradingPanelProps {
   lecturerId: string;
@@ -37,7 +37,7 @@ interface CourseGrading {
   courseId: string;
   courseName: string;
   courseCode: string;
-  level: string;
+  level: number;
   grading: {
     id: string;
     courseId: string;
@@ -102,7 +102,8 @@ export function GradingPanel({ lecturerId }: GradingPanelProps) {
           id: g.courseId,
           name: g.courseName,
           code: g.courseCode,
-          level: g.level,
+          level: g.level as ValidLevel,
+          schoolId: '',
           lecturerId,
           departments: [],
         }));

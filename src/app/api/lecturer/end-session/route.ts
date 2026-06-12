@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       let studentQuery = db.from('students').select('*').in('department_id', deptIds);
       const { data: allDeptStudents } = await studentQuery;
 
-      absentStudents = (allDeptStudents || []).filter(
+      absentStudents = ((allDeptStudents || []) as Record<string, unknown>[]).filter(
         (s: Record<string, unknown>) => !attendedStudentIds.includes(s.id as string)
       );
     }

@@ -1,5 +1,5 @@
 // ============================================================
-// checkIn - Facial Recognition Utilities
+// checkIn - Facial Recognition Utilities (MediaPipe FaceMesh)
 // ============================================================
 
 import type { FacialLandmarkData } from './types';
@@ -8,9 +8,7 @@ import type { FacialLandmarkData } from './types';
  * Calculate cosine similarity between two facial descriptor vectors.
  * Returns a similarity score from 0 to 100 (100 = identical).
  * 
- * Uses cosine similarity which works better for both:
- * - Real face-api.js descriptors (128-float vectors)
- * - Image-hash descriptors (normalized luminance-based vectors)
+ * Works with MediaPipe FaceMesh landmark descriptors.
  */
 export function calculateSimilarity(
   descriptor1: number[],
@@ -20,7 +18,6 @@ export function calculateSimilarity(
     return 0;
   }
 
-  // Compute dot product and magnitudes
   let dotProduct = 0;
   let mag1 = 0;
   let mag2 = 0;
@@ -38,13 +35,7 @@ export function calculateSimilarity(
     return 0;
   }
 
-  // Cosine similarity: -1 to 1 (1 = identical direction)
   const cosineSim = dotProduct / (mag1 * mag2);
-
-  // Map cosine similarity from [-1, 1] to [0, 100]
-  // cosineSim = 1 → 100% (same person)
-  // cosineSim = 0 → 50% (unrelated)
-  // cosineSim = -1 → 0% (opposite)
   const similarity = Math.max(0, Math.min(100, (cosineSim + 1) * 50));
 
   return Math.round(similarity * 100) / 100;
@@ -81,13 +72,11 @@ export function compressCanvasImage(
   let quality = 0.8;
   let dataUrl = canvas.toDataURL('image/jpeg', quality);
   
-  // Reduce quality until size is under limit
   while (dataUrl.length * 0.75 > maxSizeKB * 1024 && quality > 0.1) {
     quality -= 0.1;
     dataUrl = canvas.toDataURL('image/jpeg', quality);
   }
   
-  // If still too large, reduce canvas dimensions
   if (dataUrl.length * 0.75 > maxSizeKB * 1024) {
     const scale = 0.5;
     const tempCanvas = document.createElement('canvas');
@@ -123,7 +112,6 @@ export function deserializeFacialData(json: string): FacialLandmarkData | null {
 
 /**
  * Calculate Euclidean distance between two descriptor arrays
- * (server-side version without face-api.js dependency)
  */
 export function euclideanDistance(a: number[], b: number[]): number {
   if (a.length !== b.length) return Infinity;
@@ -132,4 +120,68 @@ export function euclideanDistance(a: number[], b: number[]): number {
     sum += (a[i] - b[i]) ** 2;
   }
   return Math.sqrt(sum);
+}
+
+/**
+ * Convert MediaPipe FaceMesh landmarks to a compact descriptor vector.
+ * Takes the 468 face landmarks and produces a normalized descriptor
+ * by computing relative distances between key facial feature points.
+ * 
+ * MediaPipe FaceMesh provides 468 3D landmarks with x, y, z coordinates.
+ * We extract key geometric relationships to form a compact descriptor.
+ */
+export function landmarksToDescriptor(
+  landmarks: Array<{ x: number; y: number; z: number }>
+): number[] {
+  if (!landmarks || landmarks.length < 468) {
+    return [];
+  }
+
+  const descriptor: number[] = [];
+  
+  // Key landmark indices for facial features
+  const keyPoints = [
+    // Face outline
+    10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
+    397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
+    172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
+    // Eyes
+    33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158,
+    362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387,
+    // Nose
+    1, 2, 98, 327, 168, 6, 197, 195, 5,
+    // Mouth
+    61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308,
+    // Eyebrows
+    70, 63, 105, 66, 107, 336, 296, 334, 293, 300,
+  ];
+
+  // Compute relative distances between pairs of key points
+  // This creates a compact, position-invariant descriptor
+  for (let i = 0; i < keyPoints.length; i++) {
+    for (let j = i + 1; j < keyPoints.length; j += 3) { // Skip some pairs to reduce dimensionality
+      const p1 = landmarks[keyPoints[i]];
+      const p2 = landmarks[keyPoints[j]];
+      if (p1 && p2) {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dz = (p2.z || 0) - (p1.z || 0);
+        descriptor.push(dx, dy, dz);
+      }
+    }
+  }
+
+  // Normalize the descriptor
+  let mag = 0;
+  for (const v of descriptor) {
+    mag += v * v;
+  }
+  mag = Math.sqrt(mag);
+  if (mag > 0) {
+    for (let i = 0; i < descriptor.length; i++) {
+      descriptor[i] = descriptor[i] / mag;
+    }
+  }
+
+  return descriptor;
 }

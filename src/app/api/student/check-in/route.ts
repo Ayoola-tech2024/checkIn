@@ -3,10 +3,6 @@ import { db } from '@/lib/insforge';
 import { haversineDistance } from '@/lib/geo';
 import { calculateSimilarity, getAttendanceStatusFromSimilarity } from '@/lib/face-utils';
 
-// DEMO MODE: Set to true to bypass all verification checks for demo purposes
-// This makes both location and face recognition always pass
-const DEMO_MODE = true;
-
 export async function POST(request: NextRequest) {
   try {
     const {
@@ -18,9 +14,7 @@ export async function POST(request: NextRequest) {
       selfieData,
     } = await request.json();
 
-    // In demo mode, allow missing coordinates (we'll use venue coords as fallback)
-    const requiresCoords = !DEMO_MODE;
-    if (!studentId || !sessionId || (requiresCoords && (studentLat === undefined || studentLng === undefined)) || !facialDescriptor) {
+    if (!studentId || !sessionId || studentLat === undefined || studentLng === undefined || !facialDescriptor) {
       return NextResponse.json(
         { success: false, error: 'Student ID, session ID, coordinates, and facial descriptor are required' },
         { status: 400 }
@@ -86,7 +80,6 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== TIER 1: Location Validation =====
-    // If session has no lecturer coords, try to get venue coords as fallback
     let lecturerLat = session.lecturer_lat as number | null;
     let lecturerLng = session.lecturer_lng as number | null;
 
@@ -104,85 +97,94 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Use student coords or fallback to lecturer/venue coords (demo: same location = pass)
-    const finalStudentLat = studentLat ?? lecturerLat ?? 0;
-    const finalStudentLng = studentLng ?? lecturerLng ?? 0;
-
     let distance = 0;
+    let isWithinLocation = true;
+
     if (lecturerLat !== null && lecturerLng !== null) {
       distance = haversineDistance(
-        finalStudentLat,
-        finalStudentLng,
+        studentLat,
+        studentLng,
         lecturerLat,
         lecturerLng
       );
+      isWithinLocation = distance <= (session.distance_threshold as number);
     }
 
-    // DEMO MODE: Always pass location check
-    const isWithinLocation = DEMO_MODE ? true : distance <= (session.distance_threshold as number);
+    if (!isWithinLocation) {
+      // Location check failed - record as rejected_location
+      const now = new Date().toISOString();
+      const attendanceData = {
+        status: 'rejected_location',
+        similarity_score: 0,
+        student_lat: studentLat,
+        student_lng: studentLng,
+        selfie_data: selfieData || null,
+        check_in_time: now,
+      };
+
+      if (existingAttendance) {
+        await db.from('attendances').update(attendanceData).eq('id', existingAttendance.id as string);
+      } else {
+        await db.from('attendances').insert({
+          student_id: studentId,
+          session_id: sessionId,
+          ...attendanceData,
+        });
+      }
+
+      return NextResponse.json({
+        success: false,
+        error: `You are ${Math.round(distance)}m away from the venue. Must be within ${session.distance_threshold}m.`,
+        data: {
+          status: 'rejected_location',
+          distance: Math.round(distance * 100) / 100,
+          threshold: session.distance_threshold,
+          message: `Too far from venue (${Math.round(distance)}m vs ${session.distance_threshold}m required)`,
+        },
+      });
+    }
 
     // ===== TIER 2: Facial Recognition Validation =====
-    let similarityScore = 85; // Default high score for demo
-    let attendanceStatus: 'present' | 'pending_review' | 'rejected_identity' = 'present';
-
-    if (!DEMO_MODE) {
-      // Real verification logic (disabled in demo mode)
-      if (!student.facial_data) {
-        return NextResponse.json(
-          { success: false, error: 'No facial data on file. Please re-activate your account.' },
-          { status: 400 }
-        );
-      }
-
-      let storedDescriptor: number[];
-      try {
-        const facialObj = JSON.parse(student.facial_data as string);
-        storedDescriptor = facialObj.descriptor || facialObj;
-      } catch {
-        return NextResponse.json(
-          { success: false, error: 'Invalid facial data on file. Please re-activate your account.' },
-          { status: 400 }
-        );
-      }
-
-      similarityScore = calculateSimilarity(storedDescriptor, facialDescriptor);
-      const result = getAttendanceStatusFromSimilarity(similarityScore);
-      attendanceStatus = result.status;
-    } else {
-      // Demo mode: Try to calculate real similarity but always override to present
-      if (student.facial_data && facialDescriptor) {
-        try {
-          const facialObj = JSON.parse(student.facial_data as string);
-          const storedDescriptor = facialObj.descriptor || facialObj;
-          const realScore = calculateSimilarity(storedDescriptor, facialDescriptor);
-          // Show real score if it's high enough, otherwise show a demo-friendly score
-          similarityScore = realScore > 50 ? realScore : 75 + Math.random() * 15;
-        } catch {
-          similarityScore = 80 + Math.random() * 15;
-        }
-      }
+    if (!student.facial_data) {
+      return NextResponse.json(
+        { success: false, error: 'No facial data on file. Please re-activate your account with face verification.' },
+        { status: 400 }
+      );
     }
+
+    let storedDescriptor: number[];
+    try {
+      const facialObj = JSON.parse(student.facial_data as string);
+      storedDescriptor = facialObj.descriptor || facialObj;
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Invalid facial data on file. Please re-activate your account.' },
+        { status: 400 }
+      );
+    }
+
+    const similarityScore = calculateSimilarity(storedDescriptor, facialDescriptor);
+    const result = getAttendanceStatusFromSimilarity(similarityScore);
+    const attendanceStatus = result.status;
 
     const now = new Date().toISOString();
     const attendanceData = {
       status: attendanceStatus,
       similarity_score: similarityScore,
-      student_lat: finalStudentLat,
-      student_lng: finalStudentLng,
+      student_lat: studentLat,
+      student_lng: studentLng,
       selfie_data: selfieData || null,
       check_in_time: now,
     };
 
     let attendance: Record<string, unknown>;
     if (existingAttendance) {
-      // Update existing
       const { data: updated } = await db
         .from('attendances')
         .update(attendanceData)
         .eq('id', existingAttendance.id as string);
       attendance = (updated?.[0] as Record<string, unknown>) || { id: existingAttendance.id };
     } else {
-      // Insert new
       const { data: inserted } = await db
         .from('attendances')
         .insert({

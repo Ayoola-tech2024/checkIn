@@ -59,6 +59,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { PieChart, Pie, Cell } from 'recharts';
 import { toast } from 'sonner';
@@ -82,6 +89,8 @@ import {
   ATTENDANCE_POLL_INTERVAL,
   DEFAULT_DISTANCE_THRESHOLD,
   DEFAULT_SESSION_DURATION,
+  SCHOOL,
+  VALID_LEVELS,
 } from '@/lib/constants';
 
 // ============================================================
@@ -133,7 +142,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
   const [title, setTitle] = useState('');
   const [courseId, setCourseId] = useState('');
   const [venueId, setVenueId] = useState('');
-  const [level, setLevel] = useState('');
+  const [level, setLevel] = useState<string>('100');
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
   const [distanceThreshold, setDistanceThreshold] = useState(DEFAULT_DISTANCE_THRESHOLD);
   const [durationMinutes, setDurationMinutes] = useState(DEFAULT_SESSION_DURATION);
@@ -161,7 +170,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
     setTitle('');
     setCourseId('');
     setVenueId('');
-    setLevel('');
+    setLevel('100');
     setSelectedDepts([]);
     setDistanceThreshold(DEFAULT_DISTANCE_THRESHOLD);
     setDurationMinutes(DEFAULT_SESSION_DURATION);
@@ -190,7 +199,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
           courseId,
           venueId,
           lecturerId,
-          level,
+          level: parseInt(level, 10),
           departmentIds: selectedDepts,
           distanceThreshold,
           durationMinutes,
@@ -266,7 +275,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
                   setCourseId(val);
                   setSelectedDepts([]);
                   const course = courses.find((c) => c.id === val);
-                  if (course) setLevel(course.level);
+                  if (course) setLevel(String(course.level ?? 100));
                 }}
               >
                 <option value="">Select course</option>
@@ -284,16 +293,18 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
 
             <div className="space-y-2">
               <Label htmlFor="session-level">Level *</Label>
-              <Input
-                id="session-level"
-                type="number"
-                min="100"
-                max="600"
-                step="100"
-                value={level}
-                onChange={(e) => setLevel(e.target.value)}
-                placeholder="e.g. 200"
-              />
+              <Select value={level} onValueChange={setLevel}>
+                <SelectTrigger id="session-level" className="w-full">
+                  <SelectValue placeholder="Select level" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VALID_LEVELS.map((l) => (
+                    <SelectItem key={String(l)} value={String(l)}>
+                      {l} Level
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -1067,6 +1078,7 @@ export function LecturerPortal() {
               <h1 className="text-lg font-bold text-white">checkIn</h1>
             </div>
             <Separator orientation="vertical" className="h-6 bg-white/20" />
+            <Badge className="bg-white/20 text-white border-white/30 text-[10px] px-1.5 py-0 hover:bg-white/30">{SCHOOL}</Badge>
             <span className="text-sm text-white/70">Lecturer Portal</span>
           </div>
           <div className="flex items-center gap-2">
@@ -1078,6 +1090,11 @@ export function LecturerPortal() {
             >
               <UserCircle className="h-4 w-4" />
               <span className="hidden sm:inline">{user?.name}</span>
+              {user?.departmentName && (
+                <Badge variant="outline" className="text-[10px] border-white/30 text-white/80 bg-white/10">
+                  {user.departmentName}
+                </Badge>
+              )}
             </Button>
             <Button
               variant="ghost"

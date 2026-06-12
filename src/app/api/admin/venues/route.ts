@@ -15,7 +15,7 @@ export async function GET() {
       );
     }
 
-    const data = (venues || []).map((v: Record<string, unknown>) => ({
+    const data = ((venues || []) as Record<string, unknown>[]).map((v: Record<string, unknown>) => ({
       id: v.id,
       name: v.name,
       latitude: v.latitude,

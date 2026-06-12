@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 
+function ensureIntLevel(level: unknown): number {
+  if (typeof level === 'number') return level;
+  if (typeof level === 'string') {
+    const parsed = parseInt(level, 10);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -45,7 +54,10 @@ export async function GET(request: NextRequest) {
     ]);
 
     const courseMap = new Map(
-      (coursesResult.data || []).map((c: Record<string, unknown>) => [c.id, c])
+      (coursesResult.data || []).map((c: Record<string, unknown>) => [c.id, {
+        ...c,
+        level: ensureIntLevel(c.level),
+      }])
     );
     const venueMap = new Map(
       (venuesResult.data || []).map((v: Record<string, unknown>) => [v.id, v])
@@ -114,7 +126,7 @@ export async function GET(request: NextRequest) {
           venueId: session.venue_id,
           venueName: venue?.name,
           lecturerId: session.lecturer_id,
-          level: session.level,
+          level: ensureIntLevel(session.level),
           distanceThreshold: session.distance_threshold,
           durationMinutes: session.duration_minutes,
           scheduledAt: session.scheduled_at,
@@ -182,7 +194,7 @@ export async function POST(request: NextRequest) {
       .eq('venue_id', venueId);
 
     // Filter for actual time overlap with scheduled or active sessions
-    const venueConflicts = (venueSessions || []).filter((s: Record<string, unknown>) => {
+    const venueConflicts = ((venueSessions || []) as Record<string, unknown>[]).filter((s: Record<string, unknown>) => {
       if (s.status !== 'scheduled' && s.status !== 'active') return false;
       const existingStart = new Date(s.scheduled_at as string);
       const existingEnd = new Date(existingStart.getTime() + (s.duration_minutes as number) * 60000);
@@ -195,7 +207,7 @@ export async function POST(request: NextRequest) {
         ? await db.from('courses').select('id, name, code').in('id', conflictCourseIds)
         : { data: [] };
 
-      const courseMap = new Map(
+      const conflictCourseMap = new Map(
         (conflictCourses.data || []).map((c: Record<string, unknown>) => [c.id, c])
       );
 
@@ -205,7 +217,7 @@ export async function POST(request: NextRequest) {
           error: 'Venue is already booked for the requested time window',
           data: {
             conflicts: venueConflicts.map((s: Record<string, unknown>) => {
-              const course = courseMap.get(s.course_id as string) as Record<string, unknown> | undefined;
+              const course = conflictCourseMap.get(s.course_id as string) as Record<string, unknown> | undefined;
               return {
                 id: s.id,
                 title: s.title,
@@ -276,7 +288,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const courseMap = new Map(
+      const conflictCourseMap2 = new Map(
         (conflictCourses.data || []).map((c: Record<string, unknown>) => [c.id, c])
       );
 
@@ -287,9 +299,9 @@ export async function POST(request: NextRequest) {
           data: {
             conflicts: deptConflicts.map((s) => {
               const session = s as Record<string, unknown>;
-              const course = courseMap.get(session.course_id as string) as Record<string, unknown> | undefined;
-              const conflictingDepts = (conflictSessionDepts || [])
-                .filter((csd: Record<string, unknown>) => csd.session_id === session.id && departmentIds.includes(csd.department_id))
+              const course = conflictCourseMap2.get(session.course_id as string) as Record<string, unknown> | undefined;
+              const conflictingDepts = ((conflictSessionDepts || []) as Record<string, unknown>[])
+                .filter((csd: Record<string, unknown>) => csd.session_id === session.id && departmentIds.includes(csd.department_id as string))
                 .map((csd: Record<string, unknown>) => conflictDeptMap.get(csd.department_id as string) || 'Unknown');
 
               return {
@@ -367,7 +379,7 @@ export async function POST(request: NextRequest) {
         venueId: session.venue_id,
         venueName: venue?.name,
         lecturerId: session.lecturer_id,
-        level: session.level,
+        level: ensureIntLevel(session.level),
         distanceThreshold: session.distance_threshold,
         durationMinutes: session.duration_minutes,
         scheduledAt: session.scheduled_at,

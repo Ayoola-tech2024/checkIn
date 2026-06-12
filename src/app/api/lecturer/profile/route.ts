@@ -28,6 +28,15 @@ export async function GET(request: NextRequest) {
 
     const lecturer = lecturers[0] as Record<string, unknown>;
 
+    // Fetch school info
+    let schoolName: string | undefined;
+    let schoolCode: string | undefined;
+    if (lecturer.school_id) {
+      const { data: schoolData } = await db.from('schools').select('name, code').eq('id', lecturer.school_id as string);
+      schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+      schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+    }
+
     // Fetch lecturer's courses
     const { data: lecturerCourses } = await db
       .from('courses')
@@ -63,12 +72,32 @@ export async function GET(request: NextRequest) {
           id: c.id as string,
           name: c.name as string,
           code: c.code as string,
-          level: (c.level as string) || '',
+          level: typeof c.level === 'number' ? c.level : (typeof c.level === 'string' ? parseInt(c.level as string, 10) || 0 : 0),
           lecturerId: c.lecturer_id as string,
           departments,
         };
       })
     );
+
+    // Fetch department name for lecturer if department_id exists
+    let lecturerDepartmentName: string | undefined;
+    if (lecturer.department_id) {
+      const { data: lecturerDepts } = await db
+        .from('departments')
+        .select('name')
+        .eq('id', lecturer.department_id as string);
+      lecturerDepartmentName = (lecturerDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
+    }
+
+    // Fetch HOD department name if hod_department_id exists
+    let hodDepartmentName: string | undefined;
+    if (lecturer.hod_department_id) {
+      const { data: hodDepts } = await db
+        .from('departments')
+        .select('name')
+        .eq('id', lecturer.hod_department_id as string);
+      hodDepartmentName = (hodDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
+    }
 
     return NextResponse.json({
       success: true,
@@ -76,6 +105,14 @@ export async function GET(request: NextRequest) {
         id: lecturer.id,
         name: lecturer.name,
         email: lecturer.email,
+        schoolId: lecturer.school_id,
+        schoolName,
+        schoolCode,
+        departmentId: lecturer.department_id,
+        departmentName: lecturerDepartmentName,
+        isHod: lecturer.is_hod ?? false,
+        hodDepartmentId: lecturer.hod_department_id,
+        hodDepartmentName,
         createdAt: lecturer.created_at,
         courses: coursesWithDepts,
       },
@@ -174,12 +211,49 @@ export async function PUT(request: NextRequest) {
 
     const updatedLecturer = updatedLecturers[0] as Record<string, unknown>;
 
+    // Fetch school info
+    let schoolName: string | undefined;
+    let schoolCode: string | undefined;
+    if (updatedLecturer.school_id) {
+      const { data: schoolData } = await db.from('schools').select('name, code').eq('id', updatedLecturer.school_id as string);
+      schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+      schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+    }
+
+    // Fetch department name if department_id exists
+    let lecturerDepartmentName: string | undefined;
+    if (updatedLecturer.department_id) {
+      const { data: lecturerDepts } = await db
+        .from('departments')
+        .select('name')
+        .eq('id', updatedLecturer.department_id as string);
+      lecturerDepartmentName = (lecturerDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
+    }
+
+    // Fetch HOD department name if hod_department_id exists
+    let hodDepartmentName: string | undefined;
+    if (updatedLecturer.hod_department_id) {
+      const { data: hodDepts } = await db
+        .from('departments')
+        .select('name')
+        .eq('id', updatedLecturer.hod_department_id as string);
+      hodDepartmentName = (hodDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         id: updatedLecturer.id,
         name: updatedLecturer.name,
         email: updatedLecturer.email,
+        schoolId: updatedLecturer.school_id,
+        schoolName,
+        schoolCode,
+        departmentId: updatedLecturer.department_id,
+        departmentName: lecturerDepartmentName,
+        isHod: updatedLecturer.is_hod ?? false,
+        hodDepartmentId: updatedLecturer.hod_department_id,
+        hodDepartmentName,
         createdAt: updatedLecturer.created_at,
       },
     });

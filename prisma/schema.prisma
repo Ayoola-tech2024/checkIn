@@ -7,6 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model School {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  code        String       @unique
+  description String?
+  departments Department[]
+  students    Student[]
+  lecturers   Lecturer[]
+  courses     Course[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
 model Admin {
   id           String   @id @default(cuid())
   name         String
@@ -17,55 +30,74 @@ model Admin {
 }
 
 model Department {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  code      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  students  Student[]
-  courseDepts CourseDepartment[]
+  id           String     @id @default(cuid())
+  name         String     @unique
+  code         String     @unique
+  schoolId     String
+  school       School     @relation(fields: [schoolId], references: [id])
+  students     Student[]
+  lecturers    Lecturer[]  @relation("DeptLecturers")
+  hodLecturers Lecturer[]  @relation("HodDepartment")
+  courses      Course[]    @relation("DeptCourses")
+  courseDepts  CourseDepartment[]
   sessionDepts SessionDepartment[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 }
 
 model Student {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   name         String
-  matricNumber String   @unique
+  matricNumber String     @unique
   departmentId String
+  schoolId     String
+  level        Int        @default(100)
   email        String?
   passwordHash String?
-  activated    Boolean  @default(false)
-  facialData   String?   // JSON string of facial landmark descriptors
-  selfieData   String?   // Base64 compressed selfie for reference
+  activated    Boolean    @default(false)
+  facialData   String?
+  selfieData   String?
   department   Department @relation(fields: [departmentId], references: [id])
+  school       School     @relation(fields: [schoolId], references: [id])
   attendances  Attendance[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 }
 
 model Lecturer {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String?
-  courses      Course[]
-  sessions     Session[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String     @id @default(cuid())
+  name            String
+  email           String     @unique
+  schoolId        String
+  departmentId    String?
+  isHod           Boolean    @default(false)
+  hodDepartmentId String?
+  passwordHash    String?
+  department      Department? @relation("DeptLecturers", fields: [departmentId], references: [id])
+  hodDepartment   Department? @relation("HodDepartment", fields: [hodDepartmentId], references: [id])
+  school          School     @relation(fields: [schoolId], references: [id])
+  courses         Course[]
+  sessions        Session[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 }
 
 model Course {
-  id          String   @id @default(cuid())
-  name        String
-  code        String   @unique
-  level       String
-  lecturerId  String
-  lecturer    Lecturer @relation(fields: [lecturerId], references: [id])
-  departments CourseDepartment[]
-  sessions    Session[]
-  grading     CourseGrading[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String     @id @default(cuid())
+  name         String
+  code         String     @unique
+  level        Int        @default(100)
+  schoolId     String
+  departmentId String?
+  lecturerId   String
+  lecturer     Lecturer   @relation(fields: [lecturerId], references: [id])
+  department   Department? @relation("DeptCourses", fields: [departmentId], references: [id])
+  school       School     @relation(fields: [schoolId], references: [id])
+  departments  CourseDepartment[]
+  sessions     Session[]
+  grading      CourseGrading[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 }
 
 model CourseDepartment {
@@ -94,13 +126,13 @@ model Session {
   courseId          String
   venueId           String
   lecturerId        String
-  level             String
+  level             Int      @default(100)
   distanceThreshold Float    @default(50)
   durationMinutes   Int      @default(15)
   scheduledAt       DateTime
   startedAt         DateTime?
   endsAt            DateTime?
-  status            String   @default("scheduled") // scheduled, active, completed, cancelled
+  status            String   @default("scheduled")
   lecturerLat       Float?
   lecturerLng       Float?
   course            Course   @relation(fields: [courseId], references: [id])
@@ -126,7 +158,7 @@ model Attendance {
   id              String    @id @default(cuid())
   studentId       String
   sessionId       String
-  status          String    @default("pending") // present, absent, pending_review, rejected_location, rejected_identity
+  status          String    @default("pending")
   similarityScore Float?
   checkInTime     DateTime?
   studentLat      Float?

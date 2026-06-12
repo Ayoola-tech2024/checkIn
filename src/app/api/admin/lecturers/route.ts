@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { hashPassword, generateDefaultPassword } from '@/lib/auth';
+import { validateLecturerFields } from '@/lib/slit-validation';
+import { SLIT_SCHOOL_ID } from '@/lib/constants';
 
 export async function GET() {
   try {
@@ -34,17 +36,79 @@ export async function GET() {
       }
     }
 
-    const data = (lecturers || []).map((l: Record<string, unknown>) => ({
-      id: l.id,
-      name: l.name,
-      email: l.email,
-      courses: (coursesByLecturer.get(l.id as string) || []).map((c) => ({
-        id: c.id,
-        name: c.name,
-        code: c.code,
-        level: c.level,
-      })),
-    }));
+    // Fetch department names for lecturers with department_id
+    const deptIds = [...new Set(
+      (lecturers || [])
+        .map((l: Record<string, unknown>) => l.department_id as string)
+        .filter(Boolean)
+    )];
+    const deptMap = new Map<string, string>();
+    if (deptIds.length > 0) {
+      const { data: depts } = await db
+        .from('departments')
+        .select('id, name')
+        .in('id', deptIds);
+      for (const d of depts || []) {
+        deptMap.set((d as Record<string, unknown>).id as string, (d as Record<string, unknown>).name as string);
+      }
+    }
+
+    // Fetch HOD department names for lecturers with hod_department_id
+    const hodDeptIds = [...new Set(
+      (lecturers || [])
+        .map((l: Record<string, unknown>) => l.hod_department_id as string)
+        .filter(Boolean)
+    )];
+    const hodDeptMap = new Map<string, string>();
+    if (hodDeptIds.length > 0) {
+      const { data: hodDepts } = await db
+        .from('departments')
+        .select('id, name')
+        .in('id', hodDeptIds);
+      for (const d of hodDepts || []) {
+        hodDeptMap.set((d as Record<string, unknown>).id as string, (d as Record<string, unknown>).name as string);
+      }
+    }
+
+    // Fetch school info
+    const schoolIds = [...new Set(
+      (lecturers || [])
+        .map((l: Record<string, unknown>) => l.school_id as string)
+        .filter(Boolean)
+    )];
+    const schoolMap = new Map<string, { name: string; code: string }>();
+    if (schoolIds.length > 0) {
+      const { data: schoolData } = await db
+        .from('schools')
+        .select('id, name, code')
+        .in('id', schoolIds);
+      for (const s of schoolData || []) {
+        schoolMap.set((s as Record<string, unknown>).id as string, { name: (s as Record<string, unknown>).name as string, code: (s as Record<string, unknown>).code as string });
+      }
+    }
+
+    const data = (lecturers || []).map((l: Record<string, unknown>) => {
+      const school = schoolMap.get(l.school_id as string);
+      return {
+        id: l.id,
+        name: l.name,
+        email: l.email,
+        schoolId: l.school_id,
+        schoolName: school?.name,
+        schoolCode: school?.code,
+        departmentId: l.department_id,
+        departmentName: l.department_id ? deptMap.get(l.department_id as string) : undefined,
+        isHod: l.is_hod ?? false,
+        hodDepartmentId: l.hod_department_id,
+        hodDepartmentName: l.hod_department_id ? hodDeptMap.get(l.hod_department_id as string) : undefined,
+        courses: (coursesByLecturer.get(l.id as string) || []).map((c) => ({
+          id: c.id,
+          name: c.name,
+          code: c.code,
+          level: typeof c.level === 'number' ? c.level : (typeof c.level === 'string' ? parseInt(c.level as string, 10) || 0 : 0),
+        })),
+      };
+    });
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
@@ -58,13 +122,44 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, email } = await request.json();
+    const { name, email, departmentId, isHod, hodDepartmentId } = await request.json();
 
     if (!name || !email) {
       return NextResponse.json(
         { success: false, error: 'Name and email are required' },
         { status: 400 }
       );
+    }
+
+    // Validate SLIT fields
+    const validation = validateLecturerFields({ departmentId, isHod, hodDepartmentId });
+    if (!validation.valid) {
+      return NextResponse.json(
+        { success: false, error: validation.errors.join('; ') },
+        { status: 400 }
+      );
+    }
+
+    // Validate department_id exists if provided
+    if (departmentId) {
+      const { data: depts } = await db.from('departments').select('id, name').eq('id', departmentId);
+      if (!depts || depts.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Department not found' },
+          { status: 404 }
+        );
+      }
+    }
+
+    // Validate hod_department_id exists if isHod is true
+    if (isHod && hodDepartmentId) {
+      const { data: hodDepts } = await db.from('departments').select('id, name').eq('id', hodDepartmentId);
+      if (!hodDepts || hodDepts.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'HOD department not found' },
+          { status: 404 }
+        );
+      }
     }
 
     const { data: existing } = await db
@@ -83,9 +178,23 @@ export async function POST(request: NextRequest) {
     const defaultPassword = generateDefaultPassword();
     const passwordHash = await hashPassword(defaultPassword);
 
+    const insertData: Record<string, unknown> = {
+      name,
+      email,
+      password_hash: passwordHash,
+      school_id: SLIT_SCHOOL_ID,
+      is_hod: isHod ?? false,
+    };
+    if (departmentId) {
+      insertData.department_id = departmentId;
+    }
+    if (isHod && hodDepartmentId) {
+      insertData.hod_department_id = hodDepartmentId;
+    }
+
     const { data: lecturers, error } = await db
       .from('lecturers')
-      .insert({ name, email, password_hash: passwordHash })
+      .insert(insertData)
       .select();
 
     if (error || !lecturers || lecturers.length === 0) {
@@ -97,12 +206,39 @@ export async function POST(request: NextRequest) {
 
     const lecturer = lecturers[0] as Record<string, unknown>;
 
+    // Fetch department name if department_id exists
+    let departmentName: string | undefined;
+    if (lecturer.department_id) {
+      const { data: depts } = await db.from('departments').select('name').eq('id', lecturer.department_id as string);
+      departmentName = (depts?.[0] as Record<string, unknown>)?.name as string | undefined;
+    }
+
+    // Fetch HOD department name if hod_department_id exists
+    let hodDeptName: string | undefined;
+    if (lecturer.hod_department_id) {
+      const { data: hodDepts } = await db.from('departments').select('name').eq('id', lecturer.hod_department_id as string);
+      hodDeptName = (hodDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
+    }
+
+    // Fetch school info
+    const { data: schoolData } = await db.from('schools').select('name, code').eq('id', SLIT_SCHOOL_ID);
+    const schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+    const schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+
     return NextResponse.json({
       success: true,
       data: {
         id: lecturer.id,
         name: lecturer.name,
         email: lecturer.email,
+        schoolId: lecturer.school_id,
+        schoolName,
+        schoolCode,
+        departmentId: lecturer.department_id,
+        departmentName,
+        isHod: lecturer.is_hod ?? false,
+        hodDepartmentId: lecturer.hod_department_id,
+        hodDepartmentName: hodDeptName,
         defaultPassword,
         courses: [],
       },
@@ -118,13 +254,44 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { id, name, email } = await request.json();
+    const { id, name, email, departmentId, isHod, hodDepartmentId } = await request.json();
 
     if (!id || !name || !email) {
       return NextResponse.json(
         { success: false, error: 'ID, name, and email are required' },
         { status: 400 }
       );
+    }
+
+    // Validate SLIT fields
+    const validation = validateLecturerFields({ departmentId, isHod, hodDepartmentId });
+    if (!validation.valid) {
+      return NextResponse.json(
+        { success: false, error: validation.errors.join('; ') },
+        { status: 400 }
+      );
+    }
+
+    // Validate department_id exists if provided
+    if (departmentId) {
+      const { data: depts } = await db.from('departments').select('id').eq('id', departmentId);
+      if (!depts || depts.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Department not found' },
+          { status: 404 }
+        );
+      }
+    }
+
+    // Validate hod_department_id exists if isHod is true
+    if (isHod && hodDepartmentId) {
+      const { data: hodDepts } = await db.from('departments').select('id').eq('id', hodDepartmentId);
+      if (!hodDepts || hodDepts.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'HOD department not found' },
+          { status: 404 }
+        );
+      }
     }
 
     // Check if email is taken by another lecturer
@@ -140,9 +307,23 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Build update data
+    const updateData: Record<string, unknown> = { name, email };
+    if (departmentId !== undefined) {
+      updateData.department_id = departmentId || null;
+    }
+    if (isHod !== undefined) {
+      updateData.is_hod = isHod;
+    }
+    if (isHod && hodDepartmentId) {
+      updateData.hod_department_id = hodDepartmentId;
+    } else if (isHod === false) {
+      updateData.hod_department_id = null;
+    }
+
     const { data: lecturers, error } = await db
       .from('lecturers')
-      .update({ name, email })
+      .update(updateData)
       .eq('id', id)
       .select();
 
@@ -154,9 +335,41 @@ export async function PUT(request: NextRequest) {
     }
 
     const lecturer = lecturers[0] as Record<string, unknown>;
+
+    // Fetch department name if department_id exists
+    let departmentName: string | undefined;
+    if (lecturer.department_id) {
+      const { data: depts } = await db.from('departments').select('name').eq('id', lecturer.department_id as string);
+      departmentName = (depts?.[0] as Record<string, unknown>)?.name as string | undefined;
+    }
+
+    // Fetch HOD department name if hod_department_id exists
+    let hodDeptName: string | undefined;
+    if (lecturer.hod_department_id) {
+      const { data: hodDepts } = await db.from('departments').select('name').eq('id', lecturer.hod_department_id as string);
+      hodDeptName = (hodDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
+    }
+
+    // Fetch school info
+    const { data: schoolData } = await db.from('schools').select('name, code').eq('id', lecturer.school_id as string);
+    const schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+    const schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+
     return NextResponse.json({
       success: true,
-      data: { id: lecturer.id, name: lecturer.name, email: lecturer.email },
+      data: {
+        id: lecturer.id,
+        name: lecturer.name,
+        email: lecturer.email,
+        schoolId: lecturer.school_id,
+        schoolName,
+        schoolCode,
+        departmentId: lecturer.department_id,
+        departmentName,
+        isHod: lecturer.is_hod ?? false,
+        hodDepartmentId: lecturer.hod_department_id,
+        hodDepartmentName: hodDeptName,
+      },
     });
   } catch (error) {
     console.error('Update lecturer error:', error);

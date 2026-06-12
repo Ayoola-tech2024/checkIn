@@ -5,7 +5,7 @@
 export const APP_NAME = 'checkIn';
 export const APP_TAGLINE = 'Student Attendance Platform';
 
-// Face API Model URLs (we'll use a CDN for the models)
+// Face API Model URLs
 export const FACE_API_MODEL_URL = '/models';
 
 // Attendance thresholds
@@ -30,3 +30,37 @@ export const ATTENDANCE_POLL_INTERVAL = 3000; // 3 seconds
 
 // Roles
 export const ROLES = ['admin', 'lecturer', 'student'] as const;
+export type UserRole = typeof ROLES[number];
+
+// ============================================================
+// SLIT School Hierarchy
+// ============================================================
+
+export const SCHOOL = 'SLIT' as const;
+export const SCHOOL_FULL_NAME = 'School of Logistics and Innovation Technology';
+
+// Valid academic levels
+export const VALID_LEVELS = [100, 200, 300, 400, 500] as const;
+export type ValidLevel = typeof VALID_LEVELS[number];
+
+// SLIT departments with correct codes
+export const SLIT_DEPARTMENTS = [
+  { name: 'Financial Technology', code: 'FINT' },
+  { name: 'Business Information Technology', code: 'BIT' },
+  { name: 'Entrepreneurship Management Technology', code: 'EMT' },
+  { name: 'Logistics and Transport Technology', code: 'LTT' },
+  { name: 'Project Management Technology', code: 'PMT' },
+  { name: 'Procurement Management Technology', code: 'PRMT' },
+  { name: 'Securities and Investment Management Technology', code: 'SIMT' },
+] as const;
+
+export const SLIT_DEPT_CODES = SLIT_DEPARTMENTS.map(d => d.code);
+export const SLIT_DEPT_NAMES = SLIT_DEPARTMENTS.map(d => d.name);
+
+// Schools list (for multi-school support in the future)
+export const SCHOOLS = [
+  { name: 'School of Logistics and Innovation Technology', code: 'SLIT' },
+] as const;
+
+// SLIT School UUID (primary key in schools table)
+export const SLIT_SCHOOL_ID = '4aeb5578-eedf-40c5-978f-41716224683e';

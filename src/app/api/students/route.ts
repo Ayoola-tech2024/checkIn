@@ -31,8 +31,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Fetch school info for students
+    const schoolIds = [...new Set((students || []).map((s: Record<string, unknown>) => s.school_id as string).filter(Boolean))];
+    const schoolMap = new Map<string, { name: string; code: string }>();
+    if (schoolIds.length > 0) {
+      const { data: schoolData } = await db.from('schools').select('id, name, code').in('id', schoolIds);
+      for (const s of schoolData || []) {
+        schoolMap.set((s as Record<string, unknown>).id as string, { name: (s as Record<string, unknown>).name as string, code: (s as Record<string, unknown>).code as string });
+      }
+    }
+
     const data = (students || []).map((s: Record<string, unknown>) => {
       const department = deptMap.get(s.department_id as string) || null;
+      const school = schoolMap.get(s.school_id as string);
       return {
         id: s.id,
         name: s.name,
@@ -41,6 +52,10 @@ export async function GET(request: NextRequest) {
         departmentName: department?.name,
         departmentCode: department?.code,
         email: s.email,
+        schoolId: s.school_id,
+        schoolName: school?.name,
+        schoolCode: school?.code,
+        level: typeof s.level === 'number' ? s.level : (typeof s.level === 'string' ? parseInt(s.level as string, 10) || 100 : 100),
         activated: s.activated,
         createdAt: s.created_at,
       };

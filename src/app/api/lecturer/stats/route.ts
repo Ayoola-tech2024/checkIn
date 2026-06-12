@@ -40,9 +40,9 @@ export async function GET(request: NextRequest) {
     }
 
     const totalSessions = sessions?.length || 0;
-    const activeSessions = sessions?.filter((s: Record<string, unknown>) => s.status === 'active').length || 0;
-    const completedSessions = sessions?.filter((s: Record<string, unknown>) => s.status === 'completed').length || 0;
-    const scheduledSessions = sessions?.filter((s: Record<string, unknown>) => s.status === 'scheduled').length || 0;
+    const activeSessions = ((sessions || []) as Record<string, unknown>[]).filter((s: Record<string, unknown>) => s.status === 'active').length;
+    const completedSessions = ((sessions || []) as Record<string, unknown>[]).filter((s: Record<string, unknown>) => s.status === 'completed').length;
+    const scheduledSessions = ((sessions || []) as Record<string, unknown>[]).filter((s: Record<string, unknown>) => s.status === 'scheduled').length;
     const totalCourses = courses?.length || 0;
 
     // Fetch attendance stats for all sessions of this lecturer

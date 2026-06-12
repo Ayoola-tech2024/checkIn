@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
           venueId: session.venue_id,
           venueName: venue?.name,
           lecturerId: session.lecturer_id,
-          level: session.level,
+          level: typeof session.level === 'number' ? session.level : (typeof session.level === 'string' ? parseInt(session.level as string, 10) || 0 : 0),
           distanceThreshold: session.distance_threshold,
           durationMinutes: session.duration_minutes,
           scheduledAt: session.scheduled_at,

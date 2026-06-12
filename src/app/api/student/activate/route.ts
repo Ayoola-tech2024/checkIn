@@ -69,26 +69,32 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hashPassword(password);
 
-    // Process facial data - always store something, even if face detection failed
+    // Process facial data - face capture is now required for activation
     let facialDataString: string;
     if (facialData) {
-      // facialData could be a string (already JSON) or an object
       if (typeof facialData === 'string') {
         try {
-          // Validate it's valid JSON
           JSON.parse(facialData);
           facialDataString = facialData;
         } catch {
-          facialDataString = JSON.stringify({ descriptor: Array.from({ length: 128 }, () => Math.random() - 0.5), source: 'fallback-parse-error' });
+          return NextResponse.json(
+            { success: false, error: 'Invalid facial data format. Please recapture your face.' },
+            { status: 400 }
+          );
         }
       } else if (typeof facialData === 'object' && facialData !== null) {
         facialDataString = JSON.stringify(facialData);
       } else {
-        facialDataString = JSON.stringify({ descriptor: Array.from({ length: 128 }, () => Math.random() - 0.5), source: 'fallback-no-data' });
+        return NextResponse.json(
+          { success: false, error: 'Facial data is required for account activation.' },
+          { status: 400 }
+        );
       }
     } else {
-      // No facial data provided - use a random descriptor as fallback for demo purposes
-      facialDataString = JSON.stringify({ descriptor: Array.from({ length: 128 }, () => Math.random() - 0.5), source: 'fallback-no-capture' });
+      return NextResponse.json(
+        { success: false, error: 'Facial verification is required for account activation. Please capture your face.' },
+        { status: 400 }
+      );
     }
 
     // Update the student record
@@ -110,6 +116,15 @@ export async function POST(request: NextRequest) {
       departmentName = (depts?.[0] as Record<string, unknown>)?.name as string | undefined;
     }
 
+    // Fetch school info
+    let schoolName: string | undefined;
+    let schoolCode: string | undefined;
+    if (student.school_id) {
+      const { data: schoolData } = await db.from('schools').select('name, code').eq('id', student.school_id as string);
+      schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+      schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -119,6 +134,10 @@ export async function POST(request: NextRequest) {
         matricNumber: student.matric_number,
         departmentId: student.department_id,
         departmentName,
+        schoolId: student.school_id,
+        schoolName,
+        schoolCode,
+        level: typeof student.level === 'number' ? student.level : (typeof student.level === 'string' ? parseInt(student.level as string, 10) || 100 : 100),
         activated: true,
       },
     });

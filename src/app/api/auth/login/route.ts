@@ -93,6 +93,15 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Fetch school info
+      let schoolName: string | undefined;
+      let schoolCode: string | undefined;
+      if (lecturer.school_id) {
+        const { data: schoolData } = await db.from('schools').select('name, code').eq('id', lecturer.school_id as string);
+        schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+        schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+      }
+
       // Manually fetch courses for this lecturer
       const { data: lecturerCourses } = await db
         .from('courses')
@@ -126,12 +135,32 @@ export async function POST(request: NextRequest) {
             id: c.id as string,
             name: c.name as string,
             code: c.code as string,
-            level: (c.level as string) || '',
+            level: typeof c.level === 'number' ? c.level : (typeof c.level === 'string' ? parseInt(c.level as string, 10) || 0 : 0),
             lecturerId: c.lecturer_id as string,
             departments,
           };
         })
       );
+
+      // Fetch department name for lecturer if department_id exists
+      let lecturerDepartmentName: string | undefined;
+      if (lecturer.department_id) {
+        const { data: lecturerDepts } = await db
+          .from('departments')
+          .select('name')
+          .eq('id', lecturer.department_id as string);
+        lecturerDepartmentName = (lecturerDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
+      }
+
+      // Fetch HOD department name if hod_department_id exists
+      let hodDepartmentName: string | undefined;
+      if (lecturer.hod_department_id) {
+        const { data: hodDepts } = await db
+          .from('departments')
+          .select('name')
+          .eq('id', lecturer.hod_department_id as string);
+        hodDepartmentName = (hodDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
+      }
 
       return NextResponse.json({
         success: true,
@@ -140,6 +169,14 @@ export async function POST(request: NextRequest) {
           name: lecturer.name,
           email: lecturer.email,
           role: 'lecturer',
+          schoolId: lecturer.school_id,
+          schoolName,
+          schoolCode,
+          departmentId: lecturer.department_id,
+          departmentName: lecturerDepartmentName,
+          isHod: lecturer.is_hod ?? false,
+          hodDepartmentId: lecturer.hod_department_id,
+          hodDepartmentName,
           courses: coursesWithDepts,
         },
       });
@@ -200,6 +237,15 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Fetch school info
+      let schoolName: string | undefined;
+      let schoolCode: string | undefined;
+      if (student.school_id) {
+        const { data: schoolData } = await db.from('schools').select('name, code').eq('id', student.school_id as string);
+        schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+        schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+      }
+
       // Manually fetch department
       let departmentName: string | undefined;
       if (student.department_id) {
@@ -220,6 +266,10 @@ export async function POST(request: NextRequest) {
           matricNumber: student.matric_number,
           departmentId: student.department_id,
           departmentName,
+          schoolId: student.school_id,
+          schoolName,
+          schoolCode,
+          level: typeof student.level === 'number' ? student.level : (typeof student.level === 'string' ? parseInt(student.level as string, 10) || 100 : 100),
           activated: student.activated,
         },
       });

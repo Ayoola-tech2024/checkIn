@@ -48,7 +48,7 @@ import { FaceCapture } from '@/components/checkin/face-capture';
 import { CheckInFlow } from '@/components/checkin/check-in-flow';
 import { ProfilePanel } from '@/components/checkin/profile-panel';
 import type { SessionInfo, CheckInResult, AttendanceStatus, ApiResponse } from '@/lib/types';
-import { SESSION_POLL_INTERVAL } from '@/lib/constants';
+import { SESSION_POLL_INTERVAL, SCHOOL } from '@/lib/constants';
 import { toast } from 'sonner';
 
 // ============================================================
@@ -531,8 +531,9 @@ function ActivePortal() {
               </div>
               <div className="min-w-0">
                 <h1 className="text-sm font-semibold truncate text-white">{user?.name}</h1>
-                <p className="text-xs text-white/70 truncate">
-                  {user?.matricNumber} • {user?.departmentName}
+                <p className="text-xs text-white/70 truncate flex items-center gap-1.5">
+                  {user?.matricNumber} • {user?.departmentName} • Level {user?.level ?? '—'}
+                  <Badge className="bg-white/20 text-white border-white/30 text-[9px] px-1 py-0 hover:bg-white/30">{SCHOOL}</Badge>
                 </p>
               </div>
             </div>

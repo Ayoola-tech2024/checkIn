@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     // Recent attendance (last 5)
     const recentAttendance = await Promise.all(
-      (attendances || [])
+      ((attendances || []) as Record<string, unknown>[])
         .filter((a: Record<string, unknown>) => a.check_in_time)
         .sort((a: Record<string, unknown>, b: Record<string, unknown>) =>
           new Date(b.check_in_time as string).getTime() - new Date(a.check_in_time as string).getTime()

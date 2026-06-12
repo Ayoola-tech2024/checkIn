@@ -21,8 +21,20 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { ApiResponse } from '@/lib/types';
+import {
+  SLIT_DEPARTMENTS,
+  VALID_LEVELS,
+  SCHOOL,
+} from '@/lib/constants';
 import {
   User,
   Mail,
@@ -60,6 +72,8 @@ interface LecturerProfileData {
   id: string;
   name: string;
   email: string;
+  departmentId: string | null;
+  departmentName: string | null;
   courses: { id: string; name: string; code: string }[];
   sessionCount: number;
 }
@@ -71,6 +85,7 @@ interface StudentProfileData {
   matricNumber: string;
   departmentName: string;
   departmentCode: string;
+  level: number;
   activated: boolean;
   selfieData: string | null;
   createdAt: string;
@@ -175,6 +190,8 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
   // Edit form state
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editLevel, setEditLevel] = useState<string>('100');
+  const [editDepartmentCode, setEditDepartmentCode] = useState<string>('none');
   const [saving, setSaving] = useState(false);
 
   // Password change state
@@ -201,6 +218,16 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
         setProfileData(profile);
         setEditName(profile.name);
         setEditEmail(profile.email ?? '');
+
+        // Set SLIT-specific fields
+        if (role === 'student') {
+          const studentProfile = profile as StudentProfileData;
+          setEditLevel(String(studentProfile.level ?? 100));
+        }
+        if (role === 'lecturer') {
+          const lecturerProfile = profile as LecturerProfileData;
+          setEditDepartmentCode(lecturerProfile.departmentId ?? 'none');
+        }
 
         // For student, extract selfie data
         if (role === 'student') {
@@ -266,6 +293,14 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
         email: editEmail.trim(),
       };
 
+      // Include SLIT-specific fields
+      if (role === 'student') {
+        payload.level = parseInt(editLevel, 10);
+      }
+      if (role === 'lecturer') {
+        payload.departmentId = editDepartmentCode === 'none' ? null : editDepartmentCode;
+      }
+
       if (passwordOpen && newPassword) {
         payload.currentPassword = currentPassword;
         payload.newPassword = newPassword;
@@ -281,7 +316,10 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
 
       if (data.success) {
         toast.success('Profile updated successfully');
-        updateUser({ name: editName.trim(), email: editEmail.trim() });
+        const updates: Record<string, unknown> = { name: editName.trim(), email: editEmail.trim() };
+        if (role === 'student') updates.level = parseInt(editLevel, 10);
+        if (role === 'lecturer') updates.departmentId = editDepartmentCode === 'none' ? null : editDepartmentCode;
+        updateUser(updates);
         // Refresh profile
         fetchProfile();
         // Reset password fields
@@ -353,6 +391,9 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
                 {getRoleIcon(role)}
                 {getRoleLabel(role)}
               </Badge>
+              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800 border text-xs">
+                {SCHOOL}
+              </Badge>
               {user.email && (
                 <p className="text-sm text-muted-foreground flex items-center justify-center gap-1.5 mt-1">
                   <Mail className="size-3.5" />
@@ -398,6 +439,11 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
                   <>
                     <DetailRow icon={<User className="size-4" />} label="Name" value={(profileData as LecturerProfileData).name} />
                     <DetailRow icon={<Mail className="size-4" />} label="Email" value={(profileData as LecturerProfileData).email} />
+                    <DetailRow
+                      icon={<Building2 className="size-4" />}
+                      label="Department"
+                      value={(profileData as LecturerProfileData).departmentName || 'Not assigned'}
+                    />
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <BookOpen className="size-4 shrink-0" />
@@ -441,6 +487,11 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
                         (profileData as StudentProfileData).departmentName ||
                         'Not assigned'
                       }
+                    />
+                    <DetailRow
+                      icon={<GraduationCap className="size-4" />}
+                      label="Level"
+                      value={String((profileData as StudentProfileData).level ?? '—')}
                     />
                     <div className="flex items-center gap-2 text-sm">
                       <CheckCircle2 className="size-4 shrink-0 text-muted-foreground" />
@@ -515,6 +566,56 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
                   aria-label="Edit email"
                 />
               </div>
+
+              {/* School (read-only) */}
+              <div className="space-y-2">
+                <Label className="text-sm">School</Label>
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800 border">
+                    {SCHOOL}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">Read-only</span>
+                </div>
+              </div>
+
+              {/* Student: Level dropdown */}
+              {role === 'student' && (
+                <div className="space-y-2">
+                  <Label htmlFor="profile-level" className="text-sm">Level</Label>
+                  <Select value={editLevel} onValueChange={setEditLevel}>
+                    <SelectTrigger id="profile-level" className="w-full">
+                      <SelectValue placeholder="Select level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VALID_LEVELS.map((l) => (
+                        <SelectItem key={String(l)} value={String(l)}>
+                          {l} Level
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Lecturer: Department dropdown */}
+              {role === 'lecturer' && (
+                <div className="space-y-2">
+                  <Label htmlFor="profile-dept" className="text-sm">Department</Label>
+                  <Select value={editDepartmentCode} onValueChange={setEditDepartmentCode}>
+                    <SelectTrigger id="profile-dept" className="w-full">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {SLIT_DEPARTMENTS.map((d) => (
+                        <SelectItem key={d.code} value={d.code}>
+                          {d.name} ({d.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {/* Change Password (Collapsible) */}
               <Collapsible open={passwordOpen} onOpenChange={setPasswordOpen}>

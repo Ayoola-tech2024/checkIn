@@ -35,6 +35,15 @@ export async function GET(request: NextRequest) {
       department = (depts?.[0] as Record<string, unknown>) || null;
     }
 
+    // Fetch school info
+    let schoolName: string | undefined;
+    let schoolCode: string | undefined;
+    if (student.school_id) {
+      const { data: schoolData } = await db.from('schools').select('name, code').eq('id', student.school_id as string);
+      schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+      schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -45,6 +54,10 @@ export async function GET(request: NextRequest) {
         departmentId: student.department_id,
         departmentName: department?.name,
         departmentCode: department?.code,
+        schoolId: student.school_id,
+        schoolName,
+        schoolCode,
+        level: typeof student.level === 'number' ? student.level : (typeof student.level === 'string' ? parseInt(student.level as string, 10) || 100 : 100),
         activated: student.activated,
         selfieData: student.selfie_data || null,
         createdAt: student.created_at,
@@ -151,6 +164,15 @@ export async function PUT(request: NextRequest) {
       department = (depts?.[0] as Record<string, unknown>) || null;
     }
 
+    // Fetch school info
+    let schoolName: string | undefined;
+    let schoolCode: string | undefined;
+    if (updatedStudent.school_id) {
+      const { data: schoolData } = await db.from('schools').select('name, code').eq('id', updatedStudent.school_id as string);
+      schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+      schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -161,6 +183,10 @@ export async function PUT(request: NextRequest) {
         departmentId: updatedStudent.department_id,
         departmentName: department?.name,
         departmentCode: department?.code,
+        schoolId: updatedStudent.school_id,
+        schoolName,
+        schoolCode,
+        level: typeof updatedStudent.level === 'number' ? updatedStudent.level : (typeof updatedStudent.level === 'string' ? parseInt(updatedStudent.level as string, 10) || 100 : 100),
         activated: updatedStudent.activated,
         selfieData: updatedStudent.selfie_data || null,
         createdAt: updatedStudent.created_at,

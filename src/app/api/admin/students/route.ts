@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { hashPassword, generateDefaultPassword } from '@/lib/auth';
+import { validateStudentFields } from '@/lib/slit-validation';
+import { SLIT_SCHOOL_ID, VALID_LEVELS } from '@/lib/constants';
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, matricNumber, departmentId } = await request.json();
+    const { name, matricNumber, departmentId, level } = await request.json();
 
     if (!name || !matricNumber || !departmentId) {
       return NextResponse.json(
@@ -12,6 +14,22 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Validate SLIT fields
+    const parsedLevel = level !== undefined && level !== null
+      ? (typeof level === 'number' ? level : parseInt(String(level), 10))
+      : 100;
+
+    const validation = validateStudentFields({ level: parsedLevel, departmentId });
+    if (!validation.valid) {
+      return NextResponse.json(
+        { success: false, error: validation.errors.join('; ') },
+        { status: 400 }
+      );
+    }
+
+    // Ensure level is valid, default to 100
+    const studentLevel = VALID_LEVELS.includes(parsedLevel as typeof VALID_LEVELS[number]) ? parsedLevel : 100;
 
     // Verify department exists
     const { data: depts } = await db.from('departments').select('id, name').eq('id', departmentId);
@@ -47,6 +65,8 @@ export async function POST(request: NextRequest) {
         department_id: departmentId,
         password_hash: passwordHash,
         activated: false,
+        school_id: SLIT_SCHOOL_ID,
+        level: studentLevel,
       })
       .select();
 
@@ -60,6 +80,11 @@ export async function POST(request: NextRequest) {
 
     const student = students[0] as Record<string, unknown>;
 
+    // Fetch school info
+    const { data: schoolData } = await db.from('schools').select('name, code').eq('id', SLIT_SCHOOL_ID);
+    const schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+    const schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+
     return NextResponse.json({
       success: true,
       data: {
@@ -68,6 +93,10 @@ export async function POST(request: NextRequest) {
         matricNumber: student.matric_number,
         departmentId: student.department_id,
         departmentName: department.name,
+        schoolId: student.school_id,
+        schoolName,
+        schoolCode,
+        level: typeof student.level === 'number' ? student.level : parsedLevel,
         activated: false,
         defaultPassword,
       },
@@ -83,13 +112,35 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { id, name, matricNumber, departmentId } = await request.json();
+    const { id, name, matricNumber, departmentId, level } = await request.json();
 
     if (!id || !name || !matricNumber || !departmentId) {
       return NextResponse.json(
         { success: false, error: 'ID, name, matric number, and department are required' },
         { status: 400 }
       );
+    }
+
+    // Build update object
+    const updateData: Record<string, unknown> = {
+      name,
+      matric_number: matricNumber,
+      department_id: departmentId,
+    };
+
+    // Validate and add level if provided
+    if (level !== undefined && level !== null) {
+      const parsedLevel = typeof level === 'number' ? level : parseInt(String(level), 10);
+      const validation = validateStudentFields({ level: parsedLevel, departmentId });
+      if (!validation.valid) {
+        return NextResponse.json(
+          { success: false, error: validation.errors.join('; ') },
+          { status: 400 }
+        );
+      }
+      if (VALID_LEVELS.includes(parsedLevel as typeof VALID_LEVELS[number])) {
+        updateData.level = parsedLevel;
+      }
     }
 
     // Check if matric number is taken by another student
@@ -107,11 +158,7 @@ export async function PUT(request: NextRequest) {
 
     const { data: students, error } = await db
       .from('students')
-      .update({
-        name,
-        matric_number: matricNumber,
-        department_id: departmentId,
-      })
+      .update(updateData)
       .eq('id', id)
       .select();
 
@@ -131,6 +178,11 @@ export async function PUT(request: NextRequest) {
       departmentName = (dept[0] as Record<string, unknown>).name as string;
     }
 
+    // Fetch school info
+    const { data: schoolData } = await db.from('schools').select('name, code').eq('id', SLIT_SCHOOL_ID);
+    const schoolName = (schoolData?.[0] as Record<string, unknown>)?.name as string | undefined;
+    const schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
+
     return NextResponse.json({
       success: true,
       data: {
@@ -139,6 +191,10 @@ export async function PUT(request: NextRequest) {
         matricNumber: student.matric_number,
         departmentId: student.department_id,
         departmentName,
+        schoolId: student.school_id,
+        schoolName,
+        schoolCode,
+        level: typeof student.level === 'number' ? student.level : 100,
       },
     });
   } catch (error) {

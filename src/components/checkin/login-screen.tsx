@@ -17,12 +17,11 @@ import {
   ArrowLeft,
   Loader2,
   Fingerprint,
-  UserPlus,
   LogIn,
   ChevronRight,
 } from 'lucide-react';
 
-type LoginStep = 'select-role' | 'login-form' | 'admin-init';
+type LoginStep = 'select-role' | 'login-form';
 
 interface RoleCard {
   role: UserRole;
@@ -129,17 +128,6 @@ export function LoginScreen() {
       const data = await res.json();
 
       if (!data.success) {
-        // If admin login fails with invalid credentials, offer to create one
-        if (
-          selectedRole === 'admin' &&
-          res.status === 401 &&
-          data.error?.includes('Invalid credentials')
-        ) {
-          setStep('admin-init');
-          setError('');
-          setLoading(false);
-          return;
-        }
         setError(data.error || 'Login failed');
         return;
       }
@@ -153,50 +141,6 @@ export function LoginScreen() {
     }
   };
 
-  const handleAdminInit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !email || !password) return;
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const res = await fetch('/api/admin/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!data.success) {
-        setError(data.error || 'Failed to create admin account');
-        return;
-      }
-
-      // Now login with the newly created admin
-      const loginRes = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, role: 'admin' }),
-      });
-
-      const loginData = await loginRes.json();
-
-      if (!loginData.success) {
-        setError('Admin created but login failed. Please try logging in.');
-        setStep('login-form');
-        return;
-      }
-
-      login(loginData.data as AuthUser);
-      toast.success('Admin account created successfully!');
-    } catch {
-      setError('Network error. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const selectedRoleData = ROLES.find((r) => r.role === selectedRole);
 
@@ -404,108 +348,7 @@ export function LoginScreen() {
           </Card>
         )}
 
-        {/* Step: Admin Init */}
-        {step === 'admin-init' && (
-          <Card className="shadow-xl shadow-blue-500/8 dark:shadow-blue-900/20 border-blue-100 dark:border-blue-900/40 bg-white/90 dark:bg-slate-900/70 backdrop-blur-sm overflow-hidden">
-            {/* Blue accent line at top */}
-            <div className="h-1 bg-gradient-to-r from-rose-400 via-rose-500 to-rose-600" />
-            <CardHeader className="pb-4">
-              <button
-                onClick={handleBack}
-                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 mb-3 w-fit group/btn"
-              >
-                <ArrowLeft className="size-4 group-hover/btn:-translate-x-0.5 transition-transform duration-200" />
-                Back to role selection
-              </button>
-              <CardTitle className="flex items-center gap-3 text-xl">
-                <span className="flex items-center justify-center size-10 rounded-lg bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 shadow-sm">
-                  <UserPlus className="size-5" />
-                </span>
-                <span>
-                  Initialize Admin Account
-                </span>
-              </CardTitle>
-              <CardDescription className="ml-[52px]">
-                No admin account found. Create the initial administrator to get started.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleAdminInit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="init-name">Full Name</Label>
-                  <Input
-                    id="init-name"
-                    type="text"
-                    placeholder="Admin Name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    autoFocus
-                    className="transition-all duration-200 focus:ring-blue-500/20"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="init-email">Email</Label>
-                  <Input
-                    id="init-email"
-                    type="email"
-                    placeholder="admin@university.edu"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="transition-all duration-200 focus:ring-blue-500/20"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="init-password">Password</Label>
-                  <Input
-                    id="init-password"
-                    type="password"
-                    placeholder="Create a secure password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    className="transition-all duration-200 focus:ring-blue-500/20"
-                  />
-                </div>
 
-                <Separator className="bg-border/50" />
-
-                <div className="rounded-lg border border-rose-200 dark:border-rose-800/60 bg-rose-50 dark:bg-rose-950/20 p-3">
-                  <p className="text-sm text-rose-800 dark:text-rose-200 flex items-start gap-2">
-                    <Shield className="size-4 mt-0.5 shrink-0" />
-                    This will create the system administrator account. Only one admin can be initialized.
-                  </p>
-                </div>
-
-                {error && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-                    <p className="text-sm text-destructive">{error}</p>
-                  </div>
-                )}
-
-                <Button
-                  type="submit"
-                  className="w-full bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 dark:from-rose-600 dark:to-rose-700 dark:hover:from-rose-700 dark:hover:to-rose-800 shadow-md shadow-rose-500/20 hover:shadow-lg hover:shadow-rose-500/30 transition-all duration-300"
-                  disabled={loading || !name || !email || !password}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Creating admin...
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="size-4" />
-                      Create Admin Account
-                    </>
-                  )}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Footer with subtle gradient */}
         <div className="mt-10 text-center">

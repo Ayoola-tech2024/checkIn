@@ -106,6 +106,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { ProfilePanel } from './profile-panel';
+import { SLIT_DEPARTMENTS, VALID_LEVELS, SCHOOL } from '@/lib/constants';
 
 // ============================================================
 // Enhanced Stats Card
@@ -281,7 +282,10 @@ export function AdminDashboard() {
               <Shield className="size-5" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold leading-tight text-white">checkIn</h1>
+              <h1 className="text-lg font-semibold leading-tight text-white flex items-center gap-2">
+                checkIn
+                <Badge className="bg-white/20 text-white border-white/30 text-[10px] px-1.5 py-0 hover:bg-white/30">{SCHOOL}</Badge>
+              </h1>
               <p className="text-xs text-white/70">Admin Panel</p>
             </div>
           </div>
@@ -744,6 +748,7 @@ function StudentsTab({
   const [studentName, setStudentName] = useState('');
   const [studentMatric, setStudentMatric] = useState('');
   const [studentDeptId, setStudentDeptId] = useState('');
+  const [studentLevel, setStudentLevel] = useState<string>('100');
   const [creatingStudent, setCreatingStudent] = useState(false);
 
   // Edit student state
@@ -752,6 +757,7 @@ function StudentsTab({
   const [editStudentName, setEditStudentName] = useState('');
   const [editStudentMatric, setEditStudentMatric] = useState('');
   const [editStudentDeptId, setEditStudentDeptId] = useState('');
+  const [editStudentLevel, setEditStudentLevel] = useState<string>('100');
   const [savingStudent, setSavingStudent] = useState(false);
 
   // Delete student state
@@ -832,6 +838,7 @@ function StudentsTab({
           name: studentName.trim(),
           matricNumber: studentMatric.trim(),
           departmentId: studentDeptId,
+          level: parseInt(studentLevel, 10),
         }),
       });
       const data = await res.json();
@@ -843,6 +850,7 @@ function StudentsTab({
         setStudentName('');
         setStudentMatric('');
         setStudentDeptId('');
+        setStudentLevel('100');
         setCreateStudentOpen(false);
         fetchStudents(filterDept === 'all' ? undefined : filterDept);
         fetchDepartments();
@@ -862,6 +870,7 @@ function StudentsTab({
     setEditStudentName(s.name);
     setEditStudentMatric(s.matricNumber);
     setEditStudentDeptId(s.departmentId);
+    setEditStudentLevel(String(s.level ?? 100));
     setEditStudentOpen(true);
   };
 
@@ -879,6 +888,7 @@ function StudentsTab({
           name: editStudentName.trim(),
           matricNumber: editStudentMatric.trim(),
           departmentId: editStudentDeptId,
+          level: parseInt(editStudentLevel, 10),
         }),
       });
       const data = await res.json();
@@ -1013,6 +1023,21 @@ function StudentsTab({
                             </SelectItem>
                           ))
                         )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="student-level">Level</Label>
+                    <Select value={studentLevel} onValueChange={setStudentLevel}>
+                      <SelectTrigger id="student-level" className="w-full">
+                        <SelectValue placeholder="Select level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VALID_LEVELS.map((l) => (
+                          <SelectItem key={String(l)} value={String(l)}>
+                            {l} Level
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1186,6 +1211,7 @@ function StudentsTab({
                       <TableHead>Name</TableHead>
                       <TableHead>Matric No.</TableHead>
                       <TableHead>Department</TableHead>
+                      <TableHead>Level</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="w-12">Actions</TableHead>
                     </TableRow>
@@ -1199,6 +1225,11 @@ function StudentsTab({
                         <TableCell className="font-medium">{s.name}</TableCell>
                         <TableCell className="font-mono text-sm">{s.matricNumber}</TableCell>
                         <TableCell>{s.departmentName}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {s.level}
+                          </Badge>
+                        </TableCell>
                         <TableCell>
                           {s.activated ? (
                             <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100">
@@ -1266,6 +1297,21 @@ function StudentsTab({
                   {departments.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.name} ({d.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-student-level">Level</Label>
+              <Select value={editStudentLevel} onValueChange={setEditStudentLevel}>
+                <SelectTrigger id="edit-student-level" className="w-full">
+                  <SelectValue placeholder="Select level" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VALID_LEVELS.map((l) => (
+                    <SelectItem key={String(l)} value={String(l)}>
+                      {l} Level
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1625,6 +1671,7 @@ function LecturersTab({
 }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [lecturerDeptCode, setLecturerDeptCode] = useState<string>('none');
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -1633,6 +1680,7 @@ function LecturersTab({
   const [editLecturer, setEditLecturer] = useState<LecturerInfo | null>(null);
   const [editLecturerName, setEditLecturerName] = useState('');
   const [editLecturerEmail, setEditLecturerEmail] = useState('');
+  const [editLecturerDeptCode, setEditLecturerDeptCode] = useState<string>('none');
   const [savingLecturer, setSavingLecturer] = useState(false);
 
   // Delete lecturer state
@@ -1649,13 +1697,18 @@ function LecturersTab({
       const res = await fetch('/api/admin/lecturers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
+        body: JSON.stringify({
+          name,
+          email,
+          departmentId: lecturerDeptCode === 'none' ? null : lecturerDeptCode,
+        }),
       });
       const data = await res.json();
       if (data.success) {
         toast.success('Lecturer created! Default password: CheckIn@2024', { duration: 10000 });
         setName('');
         setEmail('');
+        setLecturerDeptCode('none');
         setDialogOpen(false);
         fetchLecturers();
         fetchStats();
@@ -1673,6 +1726,7 @@ function LecturersTab({
     setEditLecturer(l);
     setEditLecturerName(l.name);
     setEditLecturerEmail(l.email);
+    setEditLecturerDeptCode(l.departmentId ?? 'none');
     setEditLecturerOpen(true);
   };
 
@@ -1685,7 +1739,12 @@ function LecturersTab({
       const res = await fetch('/api/admin/lecturers', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editLecturer.id, name: editLecturerName, email: editLecturerEmail }),
+        body: JSON.stringify({
+          id: editLecturer.id,
+          name: editLecturerName,
+          email: editLecturerEmail,
+          departmentId: editLecturerDeptCode === 'none' ? null : editLecturerDeptCode,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1783,6 +1842,22 @@ function LecturersTab({
                       required
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lect-dept">Department (optional)</Label>
+                    <Select value={lecturerDeptCode} onValueChange={setLecturerDeptCode}>
+                      <SelectTrigger id="lect-dept" className="w-full">
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {SLIT_DEPARTMENTS.map((d) => (
+                          <SelectItem key={d.code} value={d.code}>
+                            {d.name} ({d.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <DialogFooter>
                     <Button type="submit" disabled={creating} className="shadow-sm hover:shadow-md transition-shadow">
                       {creating && <Loader2 className="size-4 animate-spin" />}
@@ -1808,6 +1883,7 @@ function LecturersTab({
                     <TableRow className="bg-muted/50">
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead>Department</TableHead>
                       <TableHead>Courses</TableHead>
                       <TableHead className="w-12">Actions</TableHead>
                     </TableRow>
@@ -1820,6 +1896,15 @@ function LecturersTab({
                       >
                         <TableCell className="font-medium">{l.name}</TableCell>
                         <TableCell className="text-muted-foreground">{l.email}</TableCell>
+                        <TableCell>
+                          {l.departmentName ? (
+                            <Badge variant="outline" className="text-xs">
+                              {l.departmentName}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">—</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {l.courses.length === 0 ? (
                             <span className="text-muted-foreground text-sm">No courses</span>
@@ -1879,6 +1964,22 @@ function LecturersTab({
                 required
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-lect-dept">Department (optional)</Label>
+              <Select value={editLecturerDeptCode} onValueChange={setEditLecturerDeptCode}>
+                <SelectTrigger id="edit-lect-dept" className="w-full">
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {SLIT_DEPARTMENTS.map((d) => (
+                    <SelectItem key={d.code} value={d.code}>
+                      {d.name} ({d.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <DialogFooter>
               <Button
                 type="submit"
@@ -1937,7 +2038,7 @@ function CoursesTab({
 }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [level, setLevel] = useState('');
+  const [level, setLevel] = useState<string>('100');
   const [lecturerId, setLecturerId] = useState('');
   const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
@@ -1948,7 +2049,7 @@ function CoursesTab({
   const [editCourse, setEditCourse] = useState<CourseInfo | null>(null);
   const [editCourseName, setEditCourseName] = useState('');
   const [editCourseCode, setEditCourseCode] = useState('');
-  const [editCourseLevel, setEditCourseLevel] = useState('');
+  const [editCourseLevel, setEditCourseLevel] = useState<string>('100');
   const [editCourseLecturerId, setEditCourseLecturerId] = useState('');
   const [editCourseDeptIds, setEditCourseDeptIds] = useState<string[]>([]);
   const [savingCourse, setSavingCourse] = useState(false);
@@ -1970,7 +2071,7 @@ function CoursesTab({
         body: JSON.stringify({
           name,
           code: code.toUpperCase(),
-          level,
+          level: parseInt(level, 10),
           lecturerId,
           departmentIds: selectedDeptIds,
         }),
@@ -2012,7 +2113,7 @@ function CoursesTab({
     setEditCourse(c);
     setEditCourseName(c.name);
     setEditCourseCode(c.code);
-    setEditCourseLevel(c.level);
+    setEditCourseLevel(String(c.level ?? 100));
     setEditCourseLecturerId(c.lecturerId);
     setEditCourseDeptIds(c.departments.map((d) => d.id));
     setEditCourseOpen(true);
@@ -2031,7 +2132,7 @@ function CoursesTab({
           id: editCourse.id,
           name: editCourseName,
           code: editCourseCode.toUpperCase(),
-          level: editCourseLevel,
+          level: parseInt(editCourseLevel, 10),
           lecturerId: editCourseLecturerId,
           departmentIds: editCourseDeptIds,
         }),
@@ -2142,8 +2243,8 @@ function CoursesTab({
                           <SelectValue placeholder="Select level" />
                         </SelectTrigger>
                         <SelectContent>
-                          {['100', '200', '300', '400', '500', '600'].map((l) => (
-                            <SelectItem key={l} value={l}>
+                          {VALID_LEVELS.map((l) => (
+                            <SelectItem key={String(l)} value={String(l)}>
                               {l} Level
                             </SelectItem>
                           ))}
@@ -2307,8 +2408,8 @@ function CoursesTab({
                     <SelectValue placeholder="Select level" />
                   </SelectTrigger>
                   <SelectContent>
-                    {['100', '200', '300', '400', '500', '600'].map((l) => (
-                      <SelectItem key={l} value={l}>
+                    {VALID_LEVELS.map((l) => (
+                      <SelectItem key={String(l)} value={String(l)}>
                         {l} Level
                       </SelectItem>
                     ))}

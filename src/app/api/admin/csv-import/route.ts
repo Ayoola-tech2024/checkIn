@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { hashPassword, generateDefaultPassword } from '@/lib/auth';
+import { SLIT_SCHOOL_ID, VALID_LEVELS } from '@/lib/constants';
 
 export async function POST(request: NextRequest) {
   try {
     const { students } = (await request.json()) as {
-      students: { name: string; matricNumber: string; department: string }[];
+      students: { name: string; matricNumber: string; department: string; level?: number | string }[];
     };
 
     if (!students || !Array.isArray(students) || students.length === 0) {
@@ -41,6 +42,19 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        // Parse and validate level
+        let studentLevel = 100; // default
+        if (row.level !== undefined && row.level !== null) {
+          const parsedLevel = typeof row.level === 'number' ? row.level : parseInt(String(row.level), 10);
+          if (VALID_LEVELS.includes(parsedLevel as typeof VALID_LEVELS[number])) {
+            studentLevel = parsedLevel;
+          } else {
+            skipped++;
+            errors.push(`Skipped: Invalid level "${row.level}" for ${row.matricNumber}. Must be one of: ${VALID_LEVELS.join(', ')}`);
+            continue;
+          }
+        }
+
         // Find or create department
         let department = deptMap.get(row.department.toLowerCase());
 
@@ -48,7 +62,7 @@ export async function POST(request: NextRequest) {
           const code = row.department.substring(0, 4).toUpperCase().replace(/\s/g, '');
           const { data: newDepts } = await db
             .from('departments')
-            .insert({ name: row.department, code })
+            .insert({ name: row.department, code, school_id: SLIT_SCHOOL_ID })
             .select();
           department = (newDepts?.[0] as Record<string, unknown>) || null;
 
@@ -84,6 +98,8 @@ export async function POST(request: NextRequest) {
           department_id: department.id,
           password_hash: passwordHash,
           activated: false,
+          school_id: SLIT_SCHOOL_ID,
+          level: studentLevel,
         });
 
         imported++;
