@@ -5,6 +5,7 @@ import { LoginScreen } from '@/components/checkin/login-screen';
 import { AdminDashboard } from '@/components/checkin/admin-dashboard';
 import { StudentPortal } from '@/components/checkin/student-portal';
 import { LecturerPortal } from '@/components/checkin/lecturer-portal';
+import { HodPortal } from '@/components/checkin/hod-portal';
 import { Loader2 } from 'lucide-react';
 
 export default function Home() {
@@ -31,6 +32,8 @@ export default function Home() {
   switch (user.role) {
     case 'admin':
       return <AdminDashboard />;
+    case 'hod':
+      return <HodPortal />;
     case 'lecturer':
       return <LecturerPortal />;
     case 'student':

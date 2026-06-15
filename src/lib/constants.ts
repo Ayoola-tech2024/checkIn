@@ -5,8 +5,8 @@
 export const APP_NAME = 'checkIn';
 export const APP_TAGLINE = 'Student Attendance Platform';
 
-// Face API Model URLs
-export const FACE_API_MODEL_URL = '/models';
+// MediaPipe FaceMesh CDN
+export const MEDIAPIPE_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh';
 
 // Attendance thresholds
 export const SIMILARITY_ACCEPT = 50;
@@ -29,7 +29,7 @@ export const SESSION_POLL_INTERVAL = 5000; // 5 seconds
 export const ATTENDANCE_POLL_INTERVAL = 3000; // 3 seconds
 
 // Roles
-export const ROLES = ['admin', 'lecturer', 'student'] as const;
+export const ROLES = ['admin', 'hod', 'lecturer', 'student'] as const;
 export type UserRole = typeof ROLES[number];
 
 // ============================================================

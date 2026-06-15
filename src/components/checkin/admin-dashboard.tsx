@@ -6,7 +6,6 @@ import type {
   DepartmentInfo,
   StudentInfo,
   LecturerInfo,
-  CourseInfo,
   VenueInfo,
   ApiResponse,
 } from '@/lib/types';
@@ -17,7 +16,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -44,7 +42,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,8 +61,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import {
-  Users,
-  BookOpen,
   Building2,
   GraduationCap,
   MapPin,
@@ -82,12 +77,12 @@ import {
   Layers,
   CalendarDays,
   UserPlus,
-  Copy,
   Pencil,
   Trash2,
   MoreVertical,
   UserCircle,
   UserCheck,
+  UserX,
   Activity,
   Clock,
   Zap,
@@ -106,7 +101,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { ProfilePanel } from './profile-panel';
-import { SLIT_DEPARTMENTS, VALID_LEVELS, SCHOOL } from '@/lib/constants';
+import { VALID_LEVELS, SCHOOL } from '@/lib/constants';
 
 // ============================================================
 // Enhanced Stats Card
@@ -187,7 +182,6 @@ export function AdminDashboard() {
   const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
   const [students, setStudents] = useState<StudentInfo[]>([]);
   const [lecturers, setLecturers] = useState<LecturerInfo[]>([]);
-  const [courses, setCourses] = useState<CourseInfo[]>([]);
   const [venues, setVenues] = useState<VenueInfo[]>([]);
 
   const fetchStats = useCallback(async () => {
@@ -238,16 +232,6 @@ export function AdminDashboard() {
     }
   }, []);
 
-  const fetchCourses = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/courses');
-      const data: ApiResponse<CourseInfo[]> = await res.json();
-      if (data.success && data.data) setCourses(data.data);
-    } catch {
-      toast.error('Failed to load courses');
-    }
-  }, []);
-
   const fetchVenues = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/venues');
@@ -263,9 +247,8 @@ export function AdminDashboard() {
     fetchDepartments();
     fetchStudents();
     fetchLecturers();
-    fetchCourses();
     fetchVenues();
-  }, [fetchStats, fetchDepartments, fetchStudents, fetchLecturers, fetchCourses, fetchVenues]);
+  }, [fetchStats, fetchDepartments, fetchStudents, fetchLecturers, fetchVenues]);
 
   const handleLogout = () => {
     logout();
@@ -345,18 +328,18 @@ export function AdminDashboard() {
                   iconColor="text-emerald-600 dark:text-emerald-400"
                 />
                 <EnhancedStatCard
-                  title="Lecturers"
-                  value={stats.totalLecturers}
-                  icon={<Users className="size-5" />}
-                  description="Registered lecturers"
+                  title="HODs"
+                  value={lecturers.filter(l => l.isHod).length}
+                  icon={<UserCheck className="size-5" />}
+                  description="Department heads assigned"
                   iconBg="bg-violet-50 dark:bg-violet-950/50"
                   iconColor="text-violet-600 dark:text-violet-400"
                 />
                 <EnhancedStatCard
-                  title="Courses"
-                  value={stats.totalCourses}
-                  icon={<BookOpen className="size-5" />}
-                  description="Available courses"
+                  title="Lecturers & Courses"
+                  value="—"
+                  icon={<Layers className="size-5" />}
+                  description="Managed by HODs"
                   iconBg="bg-amber-50 dark:bg-amber-950/50"
                   iconColor="text-amber-600 dark:text-amber-400"
                 />
@@ -608,13 +591,9 @@ export function AdminDashboard() {
               <Building2 className="size-4" />
               Departments
             </TabsTrigger>
-            <TabsTrigger value="lecturers" className="gap-1.5">
-              <Users className="size-4" />
-              Lecturers
-            </TabsTrigger>
-            <TabsTrigger value="courses" className="gap-1.5">
-              <BookOpen className="size-4" />
-              Courses
+            <TabsTrigger value="hods" className="gap-1.5">
+              <UserCheck className="size-4" />
+              HODs
             </TabsTrigger>
             <TabsTrigger value="venues" className="gap-1.5">
               <MapPin className="size-4" />
@@ -642,22 +621,13 @@ export function AdminDashboard() {
             />
           </TabsContent>
 
-          {/* Lecturers Tab */}
-          <TabsContent value="lecturers">
-            <LecturersTab
+          {/* HODs Tab */}
+          <TabsContent value="hods">
+            <HodsTab
               lecturers={lecturers}
-              fetchLecturers={fetchLecturers}
-              fetchStats={fetchStats}
-            />
-          </TabsContent>
-
-          {/* Courses Tab */}
-          <TabsContent value="courses">
-            <CoursesTab
-              courses={courses}
               departments={departments}
-              lecturers={lecturers}
-              fetchCourses={fetchCourses}
+              fetchLecturers={fetchLecturers}
+              fetchDepartments={fetchDepartments}
               fetchStats={fetchStats}
             />
           </TabsContent>
@@ -1555,6 +1525,7 @@ function DepartmentsTab({
                     <TableHead>Name</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Students</TableHead>
+                    <TableHead>HOD</TableHead>
                     <TableHead className="w-12">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1571,6 +1542,15 @@ function DepartmentsTab({
                         </Badge>
                       </TableCell>
                       <TableCell>{d.studentCount ?? 0}</TableCell>
+                      <TableCell>
+                        {d.hodName ? (
+                          <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-violet-200 dark:border-violet-800 hover:bg-violet-100 text-xs">
+                            {d.hodName}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Not assigned</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <RowActions
                           onEdit={() => openEditDept(d)}
@@ -1658,136 +1638,163 @@ function DepartmentsTab({
 }
 
 // ============================================================
-// Lecturers Tab
+// HODs Tab
 // ============================================================
-function LecturersTab({
+function HodsTab({
   lecturers,
+  departments,
   fetchLecturers,
+  fetchDepartments,
   fetchStats,
 }: {
   lecturers: LecturerInfo[];
+  departments: DepartmentInfo[];
   fetchLecturers: () => Promise<void>;
+  fetchDepartments: () => Promise<void>;
   fetchStats: () => Promise<void>;
 }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [lecturerDeptCode, setLecturerDeptCode] = useState<string>('none');
-  const [creating, setCreating] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const hods = lecturers.filter((l) => l.isHod);
 
-  // Edit lecturer state
-  const [editLecturerOpen, setEditLecturerOpen] = useState(false);
-  const [editLecturer, setEditLecturer] = useState<LecturerInfo | null>(null);
-  const [editLecturerName, setEditLecturerName] = useState('');
-  const [editLecturerEmail, setEditLecturerEmail] = useState('');
-  const [editLecturerDeptCode, setEditLecturerDeptCode] = useState<string>('none');
-  const [savingLecturer, setSavingLecturer] = useState(false);
+  // Departments without an HOD assigned
+  const departmentsWithHod = new Set(
+    hods.map((h) => h.hodDepartmentId).filter(Boolean) as string[]
+  );
+  const availableDepts = departments.filter((d) => !departmentsWithHod.has(d.id));
 
-  // Delete lecturer state
-  const [deleteLecturerOpen, setDeleteLecturerOpen] = useState(false);
-  const [deleteLecturer, setDeleteLecturer] = useState<LecturerInfo | null>(null);
-  const [deletingLecturer, setDeletingLecturer] = useState(false);
+  // Create HOD state
+  const [createHodOpen, setCreateHodOpen] = useState(false);
+  const [hodName, setHodName] = useState('');
+  const [hodEmail, setHodEmail] = useState('');
+  const [hodDeptId, setHodDeptId] = useState('');
+  const [creatingHod, setCreatingHod] = useState(false);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  // Edit HOD state
+  const [editHodOpen, setEditHodOpen] = useState(false);
+  const [editHod, setEditHod] = useState<LecturerInfo | null>(null);
+  const [editHodName, setEditHodName] = useState('');
+  const [editHodEmail, setEditHodEmail] = useState('');
+  const [savingHod, setSavingHod] = useState(false);
+
+  // Remove HOD status state
+  const [removeHodOpen, setRemoveHodOpen] = useState(false);
+  const [removeHod, setRemoveHod] = useState<LecturerInfo | null>(null);
+  const [removingHod, setRemovingHod] = useState(false);
+
+  const handleCreateHod = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email) return;
-    setCreating(true);
+    if (!hodName.trim() || !hodEmail.trim() || !hodDeptId) return;
+    setCreatingHod(true);
 
     try {
       const res = await fetch('/api/admin/lecturers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name,
-          email,
-          departmentId: lecturerDeptCode === 'none' ? null : lecturerDeptCode,
+          name: hodName.trim(),
+          email: hodEmail.trim(),
+          departmentId: hodDeptId,
+          isHod: true,
+          hodDepartmentId: hodDeptId,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Lecturer created! Default password: CheckIn@2024', { duration: 10000 });
-        setName('');
-        setEmail('');
-        setLecturerDeptCode('none');
-        setDialogOpen(false);
+        toast.success('HOD created! Default password: CheckIn@2024', { duration: 10000 });
+        setHodName('');
+        setHodEmail('');
+        setHodDeptId('');
+        setCreateHodOpen(false);
         fetchLecturers();
+        fetchDepartments();
         fetchStats();
       } else {
-        toast.error(data.error || 'Failed to create lecturer');
+        toast.error(data.error || 'Failed to create HOD');
       }
     } catch {
       toast.error('Network error');
     } finally {
-      setCreating(false);
+      setCreatingHod(false);
     }
   };
 
-  const openEditLecturer = (l: LecturerInfo) => {
-    setEditLecturer(l);
-    setEditLecturerName(l.name);
-    setEditLecturerEmail(l.email);
-    setEditLecturerDeptCode(l.departmentId ?? 'none');
-    setEditLecturerOpen(true);
+  const openEditHod = (l: LecturerInfo) => {
+    setEditHod(l);
+    setEditHodName(l.name);
+    setEditHodEmail(l.email);
+    setEditHodOpen(true);
   };
 
-  const handleEditLecturer = async (e: React.FormEvent) => {
+  const handleEditHod = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editLecturer || !editLecturerName || !editLecturerEmail) return;
-    setSavingLecturer(true);
+    if (!editHod || !editHodName.trim() || !editHodEmail.trim()) return;
+    setSavingHod(true);
 
     try {
       const res = await fetch('/api/admin/lecturers', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: editLecturer.id,
-          name: editLecturerName,
-          email: editLecturerEmail,
-          departmentId: editLecturerDeptCode === 'none' ? null : editLecturerDeptCode,
+          id: editHod.id,
+          name: editHodName.trim(),
+          email: editHodEmail.trim(),
+          departmentId: editHod.departmentId,
+          isHod: true,
+          hodDepartmentId: editHod.hodDepartmentId,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Lecturer updated successfully');
-        setEditLecturerOpen(false);
+        toast.success('HOD updated successfully');
+        setEditHodOpen(false);
         fetchLecturers();
+        fetchDepartments();
         fetchStats();
       } else {
-        toast.error(data.error || 'Failed to update lecturer');
+        toast.error(data.error || 'Failed to update HOD');
       }
     } catch {
       toast.error('Network error');
     } finally {
-      setSavingLecturer(false);
+      setSavingHod(false);
     }
   };
 
-  const openDeleteLecturer = (l: LecturerInfo) => {
-    setDeleteLecturer(l);
-    setDeleteLecturerOpen(true);
+  const openRemoveHod = (l: LecturerInfo) => {
+    setRemoveHod(l);
+    setRemoveHodOpen(true);
   };
 
-  const handleDeleteLecturer = async () => {
-    if (!deleteLecturer) return;
-    setDeletingLecturer(true);
+  const handleRemoveHod = async () => {
+    if (!removeHod) return;
+    setRemovingHod(true);
 
     try {
-      const res = await fetch(`/api/admin/lecturers?id=${deleteLecturer.id}`, {
-        method: 'DELETE',
+      const res = await fetch('/api/admin/lecturers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: removeHod.id,
+          name: removeHod.name,
+          email: removeHod.email,
+          departmentId: removeHod.departmentId,
+          isHod: false,
+          hodDepartmentId: null,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Lecturer deleted successfully');
-        setDeleteLecturerOpen(false);
+        toast.success('HOD status removed successfully');
+        setRemoveHodOpen(false);
         fetchLecturers();
+        fetchDepartments();
         fetchStats();
       } else {
-        toast.error(data.error || 'Failed to delete lecturer');
+        toast.error(data.error || 'Failed to remove HOD status');
       }
     } catch {
       toast.error('Network error');
     } finally {
-      setDeletingLecturer(false);
+      setRemovingHod(false);
     }
   };
 
@@ -1798,70 +1805,88 @@ function LecturersTab({
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Users className="size-5" />
-                Lecturers
+                <UserCheck className="size-5" />
+                Heads of Department
               </CardTitle>
               <CardDescription>
-                {lecturers.length} lecturer{lecturers.length !== 1 ? 's' : ''}
+                {hods.length} HOD{hods.length !== 1 ? 's' : ''} assigned across {departments.length} department{departments.length !== 1 ? 's' : ''}
               </CardDescription>
             </div>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog open={createHodOpen} onOpenChange={setCreateHodOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
-                  <Plus className="size-4" />
-                  Add Lecturer
+                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow" disabled={availableDepts.length === 0}>
+                  <UserPlus className="size-4" />
+                  Assign HOD
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Create Lecturer</DialogTitle>
+                  <DialogTitle>Assign HOD</DialogTitle>
                   <DialogDescription>
-                    Add a new lecturer to the system
+                    Create a Head of Department for a department that doesn&apos;t have one yet. Default password: CheckIn@2024
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleCreate} className="space-y-4">
+                <form onSubmit={handleCreateHod} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="lect-name">Full Name</Label>
+                    <Label htmlFor="hod-name">Full Name</Label>
                     <Input
-                      id="lect-name"
+                      id="hod-name"
                       placeholder="e.g. Dr. Jane Smith"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      value={hodName}
+                      onChange={(e) => setHodName(e.target.value)}
                       required
                       autoFocus
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="lect-email">Email</Label>
+                    <Label htmlFor="hod-email">Email</Label>
                     <Input
-                      id="lect-email"
+                      id="hod-email"
                       type="email"
                       placeholder="e.g. j.smith@university.edu"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      value={hodEmail}
+                      onChange={(e) => setHodEmail(e.target.value)}
                       required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="lect-dept">Department (optional)</Label>
-                    <Select value={lecturerDeptCode} onValueChange={setLecturerDeptCode}>
-                      <SelectTrigger id="lect-dept" className="w-full">
+                    <Label htmlFor="hod-dept">Department</Label>
+                    <Select value={hodDeptId} onValueChange={setHodDeptId} required>
+                      <SelectTrigger id="hod-dept" className="w-full">
                         <SelectValue placeholder="Select department" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {SLIT_DEPARTMENTS.map((d) => (
-                          <SelectItem key={d.code} value={d.code}>
-                            {d.name} ({d.code})
+                        {availableDepts.length === 0 ? (
+                          <SelectItem value="_none" disabled>
+                            All departments have HODs
                           </SelectItem>
-                        ))}
+                        ) : (
+                          availableDepts.map((d) => (
+                            <SelectItem key={d.id} value={d.id}>
+                              {d.name} ({d.code})
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="rounded-lg border bg-muted/50 p-3 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Default Credentials</p>
+                    <p className="text-xs text-muted-foreground">
+                      Email: <span className="font-mono">{hodEmail || 'email@example.com'}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Password: <span className="font-mono">CheckIn@2024</span>
+                    </p>
+                  </div>
                   <DialogFooter>
-                    <Button type="submit" disabled={creating} className="shadow-sm hover:shadow-md transition-shadow">
-                      {creating && <Loader2 className="size-4 animate-spin" />}
-                      Create Lecturer
+                    <Button
+                      type="submit"
+                      disabled={creatingHod || !hodName.trim() || !hodEmail.trim() || !hodDeptId}
+                      className="shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      {creatingHod && <Loader2 className="size-4 animate-spin" />}
+                      Assign HOD
                     </Button>
                   </DialogFooter>
                 </form>
@@ -1870,10 +1895,10 @@ function LecturersTab({
           </div>
         </CardHeader>
         <CardContent>
-          {lecturers.length === 0 ? (
+          {hods.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              <Users className="size-10 mx-auto mb-2 opacity-30" />
-              <p>No lecturers yet. Add one to get started.</p>
+              <UserCheck className="size-10 mx-auto mb-2 opacity-30" />
+              <p>No HODs assigned yet. Assign one to get started.</p>
             </div>
           ) : (
             <div className="border rounded-lg overflow-hidden">
@@ -1884,45 +1909,52 @@ function LecturersTab({
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Department</TableHead>
-                      <TableHead>Courses</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="w-12">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {lecturers.map((l, i) => (
+                    {hods.map((h, i) => (
                       <TableRow
-                        key={l.id}
+                        key={h.id}
                         className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
                       >
-                        <TableCell className="font-medium">{l.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{l.email}</TableCell>
+                        <TableCell className="font-medium">{h.name}</TableCell>
+                        <TableCell className="text-muted-foreground">{h.email}</TableCell>
                         <TableCell>
-                          {l.departmentName ? (
+                          {h.hodDepartmentName ? (
                             <Badge variant="outline" className="text-xs">
-                              {l.departmentName}
+                              {h.hodDepartmentName}
                             </Badge>
                           ) : (
                             <span className="text-muted-foreground text-sm">—</span>
                           )}
                         </TableCell>
                         <TableCell>
-                          {l.courses.length === 0 ? (
-                            <span className="text-muted-foreground text-sm">No courses</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {l.courses.map((c) => (
-                                <Badge key={c.id} variant="secondary" className="text-xs">
-                                  {c.code}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
+                          <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-violet-200 dark:border-violet-800 hover:bg-violet-100 text-xs">
+                            HOD
+                          </Badge>
                         </TableCell>
                         <TableCell>
-                          <RowActions
-                            onEdit={() => openEditLecturer(l)}
-                            onDelete={() => openDeleteLecturer(l)}
-                          />
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="size-8">
+                                <MoreVertical className="size-4" />
+                                <span className="sr-only">Actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openEditHod(h)} className="gap-2">
+                                <Pencil className="size-4" />
+                                Edit Details
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => openRemoveHod(h)} variant="destructive" className="gap-2">
+                                <UserX className="size-4" />
+                                Remove HOD Status
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1931,62 +1963,62 @@ function LecturersTab({
               </div>
             </div>
           )}
+
+          {/* Departments without HODs */}
+          {availableDepts.length > 0 && (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-sm font-medium text-muted-foreground mb-2">
+                Departments without HODs ({availableDepts.length})
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {availableDepts.map((d) => (
+                  <Badge key={d.id} variant="secondary" className="text-xs">
+                    {d.name} ({d.code})
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Edit Lecturer Dialog */}
-      <Dialog open={editLecturerOpen} onOpenChange={setEditLecturerOpen}>
+      {/* Edit HOD Dialog */}
+      <Dialog open={editHodOpen} onOpenChange={setEditHodOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Lecturer</DialogTitle>
+            <DialogTitle>Edit HOD Details</DialogTitle>
             <DialogDescription>
-              Update lecturer information
+              Update HOD name and email
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleEditLecturer} className="space-y-4">
+          <form onSubmit={handleEditHod} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-lect-name">Full Name</Label>
+              <Label htmlFor="edit-hod-name">Full Name</Label>
               <Input
-                id="edit-lect-name"
-                value={editLecturerName}
-                onChange={(e) => setEditLecturerName(e.target.value)}
+                id="edit-hod-name"
+                value={editHodName}
+                onChange={(e) => setEditHodName(e.target.value)}
                 required
                 autoFocus
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-lect-email">Email</Label>
+              <Label htmlFor="edit-hod-email">Email</Label>
               <Input
-                id="edit-lect-email"
+                id="edit-hod-email"
                 type="email"
-                value={editLecturerEmail}
-                onChange={(e) => setEditLecturerEmail(e.target.value)}
+                value={editHodEmail}
+                onChange={(e) => setEditHodEmail(e.target.value)}
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-lect-dept">Department (optional)</Label>
-              <Select value={editLecturerDeptCode} onValueChange={setEditLecturerDeptCode}>
-                <SelectTrigger id="edit-lect-dept" className="w-full">
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {SLIT_DEPARTMENTS.map((d) => (
-                    <SelectItem key={d.code} value={d.code}>
-                      {d.name} ({d.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <DialogFooter>
               <Button
                 type="submit"
-                disabled={savingLecturer || !editLecturerName || !editLecturerEmail}
+                disabled={savingHod || !editHodName.trim() || !editHodEmail.trim()}
                 className="shadow-sm hover:shadow-md transition-shadow"
               >
-                {savingLecturer && <Loader2 className="size-4 animate-spin" />}
+                {savingHod && <Loader2 className="size-4 animate-spin" />}
                 Save Changes
               </Button>
             </DialogFooter>
@@ -1994,499 +2026,24 @@ function LecturersTab({
         </DialogContent>
       </Dialog>
 
-      {/* Delete Lecturer Confirmation */}
-      <AlertDialog open={deleteLecturerOpen} onOpenChange={setDeleteLecturerOpen}>
+      {/* Remove HOD Status Confirmation */}
+      <AlertDialog open={removeHodOpen} onOpenChange={setRemoveHodOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Lecturer</AlertDialogTitle>
+            <AlertDialogTitle>Remove HOD Status</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete <strong>{deleteLecturer?.name}</strong> ({deleteLecturer?.email})? This action cannot be undone.
+              Are you sure you want to remove HOD status from <strong>{removeHod?.name}</strong>? They will remain in the system as a regular lecturer. This action can be undone by reassigning them as HOD.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingLecturer}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={removingHod}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteLecturer}
-              disabled={deletingLecturer}
+              onClick={handleRemoveHod}
+              disabled={removingHod}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingLecturer && <Loader2 className="size-4 animate-spin mr-2" />}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
-}
-
-// ============================================================
-// Courses Tab
-// ============================================================
-function CoursesTab({
-  courses,
-  departments,
-  lecturers,
-  fetchCourses,
-  fetchStats,
-}: {
-  courses: CourseInfo[];
-  departments: DepartmentInfo[];
-  lecturers: LecturerInfo[];
-  fetchCourses: () => Promise<void>;
-  fetchStats: () => Promise<void>;
-}) {
-  const [name, setName] = useState('');
-  const [code, setCode] = useState('');
-  const [level, setLevel] = useState<string>('100');
-  const [lecturerId, setLecturerId] = useState('');
-  const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
-  const [creating, setCreating] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  // Edit course state
-  const [editCourseOpen, setEditCourseOpen] = useState(false);
-  const [editCourse, setEditCourse] = useState<CourseInfo | null>(null);
-  const [editCourseName, setEditCourseName] = useState('');
-  const [editCourseCode, setEditCourseCode] = useState('');
-  const [editCourseLevel, setEditCourseLevel] = useState<string>('100');
-  const [editCourseLecturerId, setEditCourseLecturerId] = useState('');
-  const [editCourseDeptIds, setEditCourseDeptIds] = useState<string[]>([]);
-  const [savingCourse, setSavingCourse] = useState(false);
-
-  // Delete course state
-  const [deleteCourseOpen, setDeleteCourseOpen] = useState(false);
-  const [deleteCourse, setDeleteCourse] = useState<CourseInfo | null>(null);
-  const [deletingCourse, setDeletingCourse] = useState(false);
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !code || !level || !lecturerId || selectedDeptIds.length === 0) return;
-    setCreating(true);
-
-    try {
-      const res = await fetch('/api/admin/courses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          code: code.toUpperCase(),
-          level: parseInt(level, 10),
-          lecturerId,
-          departmentIds: selectedDeptIds,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Course created successfully');
-        setName('');
-        setCode('');
-        setLevel('');
-        setLecturerId('');
-        setSelectedDeptIds([]);
-        setDialogOpen(false);
-        fetchCourses();
-        fetchStats();
-      } else {
-        toast.error(data.error || 'Failed to create course');
-      }
-    } catch {
-      toast.error('Network error');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const toggleDepartment = (deptId: string) => {
-    setSelectedDeptIds((prev) =>
-      prev.includes(deptId) ? prev.filter((id) => id !== deptId) : [...prev, deptId]
-    );
-  };
-
-  const toggleEditDepartment = (deptId: string) => {
-    setEditCourseDeptIds((prev) =>
-      prev.includes(deptId) ? prev.filter((id) => id !== deptId) : [...prev, deptId]
-    );
-  };
-
-  const openEditCourse = (c: CourseInfo) => {
-    setEditCourse(c);
-    setEditCourseName(c.name);
-    setEditCourseCode(c.code);
-    setEditCourseLevel(String(c.level ?? 100));
-    setEditCourseLecturerId(c.lecturerId);
-    setEditCourseDeptIds(c.departments.map((d) => d.id));
-    setEditCourseOpen(true);
-  };
-
-  const handleEditCourse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editCourse || !editCourseName || !editCourseCode || !editCourseLevel || !editCourseLecturerId || editCourseDeptIds.length === 0) return;
-    setSavingCourse(true);
-
-    try {
-      const res = await fetch('/api/admin/courses', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editCourse.id,
-          name: editCourseName,
-          code: editCourseCode.toUpperCase(),
-          level: parseInt(editCourseLevel, 10),
-          lecturerId: editCourseLecturerId,
-          departmentIds: editCourseDeptIds,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Course updated successfully');
-        setEditCourseOpen(false);
-        fetchCourses();
-        fetchStats();
-      } else {
-        toast.error(data.error || 'Failed to update course');
-      }
-    } catch {
-      toast.error('Network error');
-    } finally {
-      setSavingCourse(false);
-    }
-  };
-
-  const openDeleteCourse = (c: CourseInfo) => {
-    setDeleteCourse(c);
-    setDeleteCourseOpen(true);
-  };
-
-  const handleDeleteCourse = async () => {
-    if (!deleteCourse) return;
-    setDeletingCourse(true);
-
-    try {
-      const res = await fetch(`/api/admin/courses?id=${deleteCourse.id}`, {
-        method: 'DELETE',
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Course deleted successfully');
-        setDeleteCourseOpen(false);
-        fetchCourses();
-        fetchStats();
-      } else {
-        toast.error(data.error || 'Failed to delete course');
-      }
-    } catch {
-      toast.error('Network error');
-    } finally {
-      setDeletingCourse(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <BookOpen className="size-5" />
-                Courses
-              </CardTitle>
-              <CardDescription>
-                {courses.length} course{courses.length !== 1 ? 's' : ''}
-              </CardDescription>
-            </div>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
-                  <Plus className="size-4" />
-                  Add Course
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Create Course</DialogTitle>
-                  <DialogDescription>
-                    Add a new course and assign it to a lecturer and departments
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleCreate} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="course-name">Course Name</Label>
-                      <Input
-                        id="course-name"
-                        placeholder="e.g. Data Structures"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        autoFocus
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="course-code">Course Code</Label>
-                      <Input
-                        id="course-code"
-                        placeholder="e.g. CSC201"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value.toUpperCase())}
-                        required
-                        className="uppercase"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="course-level">Level</Label>
-                      <Select value={level} onValueChange={setLevel}>
-                        <SelectTrigger id="course-level" className="w-full">
-                          <SelectValue placeholder="Select level" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {VALID_LEVELS.map((l) => (
-                            <SelectItem key={String(l)} value={String(l)}>
-                              {l} Level
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="course-lecturer">Lecturer</Label>
-                      <Select value={lecturerId} onValueChange={setLecturerId}>
-                        <SelectTrigger id="course-lecturer" className="w-full">
-                          <SelectValue placeholder="Select lecturer" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {lecturers.map((l) => (
-                            <SelectItem key={l.id} value={l.id}>
-                              {l.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Departments</Label>
-                    <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-2 custom-scrollbar">
-                      {departments.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No departments available. Create one first.</p>
-                      ) : (
-                        departments.map((d) => (
-                          <label
-                            key={d.id}
-                            className="flex items-center gap-2 text-sm cursor-pointer hover:bg-primary/5 rounded px-1 py-0.5 transition-colors"
-                          >
-                            <Checkbox
-                              checked={selectedDeptIds.includes(d.id)}
-                              onCheckedChange={() => toggleDepartment(d.id)}
-                            />
-                            <span>{d.name}</span>
-                            <span className="text-muted-foreground text-xs">({d.code})</span>
-                          </label>
-                        ))
-                      )}
-                    </div>
-                    {selectedDeptIds.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {selectedDeptIds.length} department{selectedDeptIds.length !== 1 ? 's' : ''} selected
-                      </p>
-                    )}
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      type="submit"
-                      disabled={creating || selectedDeptIds.length === 0}
-                      className="shadow-sm hover:shadow-md transition-shadow"
-                    >
-                      {creating && <Loader2 className="size-4 animate-spin" />}
-                      Create Course
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {courses.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <BookOpen className="size-10 mx-auto mb-2 opacity-30" />
-              <p>No courses yet. Add one to get started.</p>
-            </div>
-          ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead>Course</TableHead>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Level</TableHead>
-                      <TableHead>Lecturer</TableHead>
-                      <TableHead>Departments</TableHead>
-                      <TableHead className="w-12">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {courses.map((c, i) => (
-                      <TableRow
-                        key={c.id}
-                        className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
-                      >
-                        <TableCell className="font-medium">{c.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="font-mono">
-                            {c.code}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{c.level}</TableCell>
-                        <TableCell>{c.lecturerName}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {c.departments.map((d) => (
-                              <Badge key={d.id} variant="secondary" className="text-xs">
-                                {d.code}
-                              </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <RowActions
-                            onEdit={() => openEditCourse(c)}
-                            onDelete={() => openDeleteCourse(c)}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Edit Course Dialog */}
-      <Dialog open={editCourseOpen} onOpenChange={setEditCourseOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Course</DialogTitle>
-            <DialogDescription>
-              Update course information
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleEditCourse} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-course-name">Course Name</Label>
-                <Input
-                  id="edit-course-name"
-                  value={editCourseName}
-                  onChange={(e) => setEditCourseName(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-course-code">Course Code</Label>
-                <Input
-                  id="edit-course-code"
-                  value={editCourseCode}
-                  onChange={(e) => setEditCourseCode(e.target.value.toUpperCase())}
-                  required
-                  className="uppercase"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-course-level">Level</Label>
-                <Select value={editCourseLevel} onValueChange={setEditCourseLevel}>
-                  <SelectTrigger id="edit-course-level" className="w-full">
-                    <SelectValue placeholder="Select level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VALID_LEVELS.map((l) => (
-                      <SelectItem key={String(l)} value={String(l)}>
-                        {l} Level
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-course-lecturer">Lecturer</Label>
-                <Select value={editCourseLecturerId} onValueChange={setEditCourseLecturerId}>
-                  <SelectTrigger id="edit-course-lecturer" className="w-full">
-                    <SelectValue placeholder="Select lecturer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {lecturers.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Departments</Label>
-              <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-2 custom-scrollbar">
-                {departments.map((d) => (
-                  <label
-                    key={d.id}
-                    className="flex items-center gap-2 text-sm cursor-pointer hover:bg-primary/5 rounded px-1 py-0.5 transition-colors"
-                  >
-                    <Checkbox
-                      checked={editCourseDeptIds.includes(d.id)}
-                      onCheckedChange={() => toggleEditDepartment(d.id)}
-                    />
-                    <span>{d.name}</span>
-                    <span className="text-muted-foreground text-xs">({d.code})</span>
-                  </label>
-                ))}
-              </div>
-              {editCourseDeptIds.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {editCourseDeptIds.length} department{editCourseDeptIds.length !== 1 ? 's' : ''} selected
-                </p>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                type="submit"
-                disabled={savingCourse || editCourseDeptIds.length === 0}
-                className="shadow-sm hover:shadow-md transition-shadow"
-              >
-                {savingCourse && <Loader2 className="size-4 animate-spin" />}
-                Save Changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Course Confirmation */}
-      <AlertDialog open={deleteCourseOpen} onOpenChange={setDeleteCourseOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Course</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete <strong>{deleteCourse?.name}</strong> ({deleteCourse?.code})? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingCourse}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteCourse}
-              disabled={deletingCourse}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deletingCourse && <Loader2 className="size-4 animate-spin mr-2" />}
-              Delete
+              {removingHod && <Loader2 className="size-4 animate-spin mr-2" />}
+              Remove HOD Status
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

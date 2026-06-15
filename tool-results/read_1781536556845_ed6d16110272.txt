@@ -1,0 +1,1002 @@
+  1000→                      id="student-matric"
+  1001→                      placeholder="e.g. CSC/2024/001"
+  1002→                      value={studentMatric}
+  1003→                      onChange={(e) => setStudentMatric(e.target.value)}
+  1004→                      required
+  1005→                      className="font-mono"
+  1006→                    />
+  1007→                  </div>
+  1008→                  <div className="space-y-2">
+  1009→                    <Label htmlFor="student-dept">Department</Label>
+  1010→                    <Select value={studentDeptId} onValueChange={setStudentDeptId} required>
+  1011→                      <SelectTrigger id="student-dept" className="w-full">
+  1012→                        <SelectValue placeholder="Select department" />
+  1013→                      </SelectTrigger>
+  1014→                      <SelectContent>
+  1015→                        {departments.length === 0 ? (
+  1016→                          <SelectItem value="_none" disabled>
+  1017→                            No departments available
+  1018→                          </SelectItem>
+  1019→                        ) : (
+  1020→                          departments.map((d) => (
+  1021→                            <SelectItem key={d.id} value={d.id}>
+  1022→                              {d.name} ({d.code})
+  1023→                            </SelectItem>
+  1024→                          ))
+  1025→                        )}
+  1026→                      </SelectContent>
+  1027→                    </Select>
+  1028→                  </div>
+  1029→                  <div className="space-y-2">
+  1030→                    <Label htmlFor="student-level">Level</Label>
+  1031→                    <Select value={studentLevel} onValueChange={setStudentLevel}>
+  1032→                      <SelectTrigger id="student-level" className="w-full">
+  1033→                        <SelectValue placeholder="Select level" />
+  1034→                      </SelectTrigger>
+  1035→                      <SelectContent>
+  1036→                        {VALID_LEVELS.map((l) => (
+  1037→                          <SelectItem key={String(l)} value={String(l)}>
+  1038→                            {l} Level
+  1039→                          </SelectItem>
+  1040→                        ))}
+  1041→                      </SelectContent>
+  1042→                    </Select>
+  1043→                  </div>
+  1044→                  <DialogFooter>
+  1045→                    <Button
+  1046→                      type="submit"
+  1047→                      disabled={creatingStudent || !studentName.trim() || !studentMatric.trim() || !studentDeptId}
+  1048→                      className="shadow-sm hover:shadow-md transition-shadow"
+  1049→                    >
+  1050→                      {creatingStudent && <Loader2 className="size-4 animate-spin" />}
+  1051→                      Create Student
+  1052→                    </Button>
+  1053→                  </DialogFooter>
+  1054→                </form>
+  1055→              </DialogContent>
+  1056→            </Dialog>
+  1057→          </div>
+  1058→        </CardHeader>
+  1059→        <CardContent className="space-y-4">
+  1060→          <div className="flex flex-col sm:flex-row gap-3">
+  1061→            <div className="flex-1">
+  1062→              <Label htmlFor="csv-upload" className="mb-2 block">
+  1063→                Choose CSV file
+  1064→              </Label>
+  1065→              <div className="flex items-center gap-2">
+  1066→                <Input
+  1067→                  id="csv-upload"
+  1068→                  type="file"
+  1069→                  accept=".csv"
+  1070→                  onChange={handleFileChange}
+  1071→                  className="flex-1"
+  1072→                />
+  1073→                {csvParsing && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+  1074→              </div>
+  1075→            </div>
+  1076→            {csvPreview.length > 0 && (
+  1077→              <div className="flex items-end">
+  1078→                <Button
+  1079→                  onClick={handleImport}
+  1080→                  disabled={csvImporting}
+  1081→                  className="gap-2 shadow-sm hover:shadow-md transition-shadow"
+  1082→                >
+  1083→                  {csvImporting ? (
+  1084→                    <Loader2 className="size-4 animate-spin" />
+  1085→                  ) : (
+  1086→                    <FileUp className="size-4" />
+  1087→                  )}
+  1088→                  Import {csvPreview.length} students
+  1089→                </Button>
+  1090→              </div>
+  1091→            )}
+  1092→          </div>
+  1093→
+  1094→          {/* CSV Preview */}
+  1095→          {csvPreview.length > 0 && (
+  1096→            <div className="border rounded-lg overflow-hidden">
+  1097→              <div className="max-h-64 overflow-y-auto custom-scrollbar">
+  1098→                <Table>
+  1099→                  <TableHeader>
+  1100→                    <TableRow className="bg-muted/50">
+  1101→                      <TableHead className="w-12">#</TableHead>
+  1102→                      <TableHead>Name</TableHead>
+  1103→                      <TableHead>Matric Number</TableHead>
+  1104→                      <TableHead>Department</TableHead>
+  1105→                    </TableRow>
+  1106→                  </TableHeader>
+  1107→                  <TableBody>
+  1108→                    {csvPreview.slice(0, 50).map((row, i) => (
+  1109→                      <TableRow key={i} className={i % 2 === 1 ? 'bg-primary/[0.02]' : ''}>
+  1110→                        <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+  1111→                        <TableCell>{row.name}</TableCell>
+  1112→                        <TableCell className="font-mono text-sm">{row.matricNumber}</TableCell>
+  1113→                        <TableCell>{row.department}</TableCell>
+  1114→                      </TableRow>
+  1115→                    ))}
+  1116→                    {csvPreview.length > 50 && (
+  1117→                      <TableRow>
+  1118→                        <TableCell colSpan={4} className="text-center text-muted-foreground text-sm">
+  1119→                          ... and {csvPreview.length - 50} more rows
+  1120→                        </TableCell>
+  1121→                      </TableRow>
+  1122→                    )}
+  1123→                  </TableBody>
+  1124→                </Table>
+  1125→              </div>
+  1126→            </div>
+  1127→          )}
+  1128→
+  1129→          {/* Import Results */}
+  1130→          {csvResult && (
+  1131→            <div className="flex flex-wrap gap-3">
+  1132→              <div className="flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400">
+  1133→                <CheckCircle2 className="size-4" />
+  1134→                {csvResult.imported} imported
+  1135→              </div>
+  1136→              {csvResult.skipped > 0 && (
+  1137→                <div className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
+  1138→                  <AlertCircle className="size-4" />
+  1139→                  {csvResult.skipped} skipped
+  1140→                </div>
+  1141→              )}
+  1142→              {csvResult.errors && csvResult.errors.length > 0 && (
+  1143→                <details className="w-full">
+  1144→                  <summary className="text-sm text-destructive cursor-pointer flex items-center gap-1.5">
+  1145→                    <XCircle className="size-4" />
+  1146→                    {csvResult.errors.length} error(s) — click to view
+  1147→                  </summary>
+  1148→                  <div className="mt-2 rounded-lg border bg-destructive/5 p-3 max-h-32 overflow-y-auto">
+  1149→                    {csvResult.errors.map((err, i) => (
+  1150→                      <p key={i} className="text-xs text-destructive">{err}</p>
+  1151→                    ))}
+  1152→                  </div>
+  1153→                </details>
+  1154→              )}
+  1155→            </div>
+  1156→          )}
+  1157→        </CardContent>
+  1158→      </Card>
+  1159→
+  1160→      {/* Student List */}
+  1161→      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
+  1162→        <CardHeader>
+  1163→          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  1164→            <div>
+  1165→              <CardTitle className="flex items-center gap-2 text-base">
+  1166→                <GraduationCap className="size-5" />
+  1167→                Student List
+  1168→              </CardTitle>
+  1169→              <CardDescription>
+  1170→                {filtered.length} student{filtered.length !== 1 ? 's' : ''} total
+  1171→              </CardDescription>
+  1172→            </div>
+  1173→            <div className="flex flex-col sm:flex-row gap-2">
+  1174→              <div className="relative">
+  1175→                <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+  1176→                <Input
+  1177→                  placeholder="Search students..."
+  1178→                  value={searchQuery}
+  1179→                  onChange={(e) => setSearchQuery(e.target.value)}
+  1180→                  className="pl-8 w-full sm:w-56"
+  1181→                />
+  1182→              </div>
+  1183→              <Select value={filterDept} onValueChange={handleFilterChange}>
+  1184→                <SelectTrigger className="w-full sm:w-48">
+  1185→                  <SelectValue placeholder="All departments" />
+  1186→                </SelectTrigger>
+  1187→                <SelectContent>
+  1188→                  <SelectItem value="all">All departments</SelectItem>
+  1189→                  {departments.map((d) => (
+  1190→                    <SelectItem key={d.id} value={d.id}>
+  1191→                      {d.name}
+  1192→                    </SelectItem>
+  1193→                  ))}
+  1194→                </SelectContent>
+  1195→              </Select>
+  1196→            </div>
+  1197→          </div>
+  1198→        </CardHeader>
+  1199→        <CardContent>
+  1200→          {filtered.length === 0 ? (
+  1201→            <div className="text-center py-8 text-muted-foreground">
+  1202→              <GraduationCap className="size-10 mx-auto mb-2 opacity-30" />
+  1203→              <p>No students found</p>
+  1204→            </div>
+  1205→          ) : (
+  1206→            <div className="border rounded-lg overflow-hidden">
+  1207→              <div className="max-h-96 overflow-y-auto custom-scrollbar">
+  1208→                <Table>
+  1209→                  <TableHeader>
+  1210→                    <TableRow className="bg-muted/50">
+  1211→                      <TableHead>Name</TableHead>
+  1212→                      <TableHead>Matric No.</TableHead>
+  1213→                      <TableHead>Department</TableHead>
+  1214→                      <TableHead>Level</TableHead>
+  1215→                      <TableHead>Status</TableHead>
+  1216→                      <TableHead className="w-12">Actions</TableHead>
+  1217→                    </TableRow>
+  1218→                  </TableHeader>
+  1219→                  <TableBody>
+  1220→                    {filtered.map((s, i) => (
+  1221→                      <TableRow
+  1222→                        key={s.id}
+  1223→                        className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+  1224→                      >
+  1225→                        <TableCell className="font-medium">{s.name}</TableCell>
+  1226→                        <TableCell className="font-mono text-sm">{s.matricNumber}</TableCell>
+  1227→                        <TableCell>{s.departmentName}</TableCell>
+  1228→                        <TableCell>
+  1229→                          <Badge variant="outline" className="font-mono text-xs">
+  1230→                            {s.level}
+  1231→                          </Badge>
+  1232→                        </TableCell>
+  1233→                        <TableCell>
+  1234→                          {s.activated ? (
+  1235→                            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100">
+  1236→                              Activated
+  1237→                            </Badge>
+  1238→                          ) : (
+  1239→                            <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:bg-amber-100">
+  1240→                              Not Activated
+  1241→                            </Badge>
+  1242→                          )}
+  1243→                        </TableCell>
+  1244→                        <TableCell>
+  1245→                          <RowActions
+  1246→                            onEdit={() => openEditStudent(s)}
+  1247→                            onDelete={() => openDeleteStudent(s)}
+  1248→                          />
+  1249→                        </TableCell>
+  1250→                      </TableRow>
+  1251→                    ))}
+  1252→                  </TableBody>
+  1253→                </Table>
+  1254→              </div>
+  1255→            </div>
+  1256→          )}
+  1257→        </CardContent>
+  1258→      </Card>
+  1259→
+  1260→      {/* Edit Student Dialog */}
+  1261→      <Dialog open={editStudentOpen} onOpenChange={setEditStudentOpen}>
+  1262→        <DialogContent>
+  1263→          <DialogHeader>
+  1264→            <DialogTitle>Edit Student</DialogTitle>
+  1265→            <DialogDescription>
+  1266→              Update student information
+  1267→            </DialogDescription>
+  1268→          </DialogHeader>
+  1269→          <form onSubmit={handleEditStudent} className="space-y-4">
+  1270→            <div className="space-y-2">
+  1271→              <Label htmlFor="edit-student-name">Full Name</Label>
+  1272→              <Input
+  1273→                id="edit-student-name"
+  1274→                value={editStudentName}
+  1275→                onChange={(e) => setEditStudentName(e.target.value)}
+  1276→                required
+  1277→                autoFocus
+  1278→              />
+  1279→            </div>
+  1280→            <div className="space-y-2">
+  1281→              <Label htmlFor="edit-student-matric">Matric Number</Label>
+  1282→              <Input
+  1283→                id="edit-student-matric"
+  1284→                value={editStudentMatric}
+  1285→                onChange={(e) => setEditStudentMatric(e.target.value)}
+  1286→                required
+  1287→                className="font-mono"
+  1288→              />
+  1289→            </div>
+  1290→            <div className="space-y-2">
+  1291→              <Label htmlFor="edit-student-dept">Department</Label>
+  1292→              <Select value={editStudentDeptId} onValueChange={setEditStudentDeptId} required>
+  1293→                <SelectTrigger id="edit-student-dept" className="w-full">
+  1294→                  <SelectValue placeholder="Select department" />
+  1295→                </SelectTrigger>
+  1296→                <SelectContent>
+  1297→                  {departments.map((d) => (
+  1298→                    <SelectItem key={d.id} value={d.id}>
+  1299→                      {d.name} ({d.code})
+  1300→                    </SelectItem>
+  1301→                  ))}
+  1302→                </SelectContent>
+  1303→              </Select>
+  1304→            </div>
+  1305→            <div className="space-y-2">
+  1306→              <Label htmlFor="edit-student-level">Level</Label>
+  1307→              <Select value={editStudentLevel} onValueChange={setEditStudentLevel}>
+  1308→                <SelectTrigger id="edit-student-level" className="w-full">
+  1309→                  <SelectValue placeholder="Select level" />
+  1310→                </SelectTrigger>
+  1311→                <SelectContent>
+  1312→                  {VALID_LEVELS.map((l) => (
+  1313→                    <SelectItem key={String(l)} value={String(l)}>
+  1314→                      {l} Level
+  1315→                    </SelectItem>
+  1316→                  ))}
+  1317→                </SelectContent>
+  1318→              </Select>
+  1319→            </div>
+  1320→            <DialogFooter>
+  1321→              <Button
+  1322→                type="submit"
+  1323→                disabled={savingStudent || !editStudentName.trim() || !editStudentMatric.trim() || !editStudentDeptId}
+  1324→                className="shadow-sm hover:shadow-md transition-shadow"
+  1325→              >
+  1326→                {savingStudent && <Loader2 className="size-4 animate-spin" />}
+  1327→                Save Changes
+  1328→              </Button>
+  1329→            </DialogFooter>
+  1330→          </form>
+  1331→        </DialogContent>
+  1332→      </Dialog>
+  1333→
+  1334→      {/* Delete Student Confirmation */}
+  1335→      <AlertDialog open={deleteStudentOpen} onOpenChange={setDeleteStudentOpen}>
+  1336→        <AlertDialogContent>
+  1337→          <AlertDialogHeader>
+  1338→            <AlertDialogTitle>Delete Student</AlertDialogTitle>
+  1339→            <AlertDialogDescription>
+  1340→              Are you sure you want to delete <strong>{deleteStudent?.name}</strong> ({deleteStudent?.matricNumber})? This action cannot be undone.
+  1341→            </AlertDialogDescription>
+  1342→          </AlertDialogHeader>
+  1343→          <AlertDialogFooter>
+  1344→            <AlertDialogCancel disabled={deletingStudent}>Cancel</AlertDialogCancel>
+  1345→            <AlertDialogAction
+  1346→              onClick={handleDeleteStudent}
+  1347→              disabled={deletingStudent}
+  1348→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  1349→            >
+  1350→              {deletingStudent && <Loader2 className="size-4 animate-spin mr-2" />}
+  1351→              Delete
+  1352→            </AlertDialogAction>
+  1353→          </AlertDialogFooter>
+  1354→        </AlertDialogContent>
+  1355→      </AlertDialog>
+  1356→    </div>
+  1357→  );
+  1358→}
+  1359→
+  1360→// ============================================================
+  1361→// Departments Tab
+  1362→// ============================================================
+  1363→function DepartmentsTab({
+  1364→  departments,
+  1365→  fetchDepartments,
+  1366→  fetchStats,
+  1367→}: {
+  1368→  departments: DepartmentInfo[];
+  1369→  fetchDepartments: () => Promise<void>;
+  1370→  fetchStats: () => Promise<void>;
+  1371→}) {
+  1372→  const [name, setName] = useState('');
+  1373→  const [code, setCode] = useState('');
+  1374→  const [creating, setCreating] = useState(false);
+  1375→  const [dialogOpen, setDialogOpen] = useState(false);
+  1376→
+  1377→  // Edit department state
+  1378→  const [editDeptOpen, setEditDeptOpen] = useState(false);
+  1379→  const [editDept, setEditDept] = useState<DepartmentInfo | null>(null);
+  1380→  const [editDeptName, setEditDeptName] = useState('');
+  1381→  const [editDeptCode, setEditDeptCode] = useState('');
+  1382→  const [savingDept, setSavingDept] = useState(false);
+  1383→
+  1384→  // Delete department state
+  1385→  const [deleteDeptOpen, setDeleteDeptOpen] = useState(false);
+  1386→  const [deleteDept, setDeleteDept] = useState<DepartmentInfo | null>(null);
+  1387→  const [deletingDept, setDeletingDept] = useState(false);
+  1388→
+  1389→  const handleCreate = async (e: React.FormEvent) => {
+  1390→    e.preventDefault();
+  1391→    if (!name || !code) return;
+  1392→    setCreating(true);
+  1393→
+  1394→    try {
+  1395→      const res = await fetch('/api/admin/departments', {
+  1396→        method: 'POST',
+  1397→        headers: { 'Content-Type': 'application/json' },
+  1398→        body: JSON.stringify({ name, code: code.toUpperCase() }),
+  1399→      });
+  1400→      const data = await res.json();
+  1401→      if (data.success) {
+  1402→        toast.success('Department created successfully');
+  1403→        setName('');
+  1404→        setCode('');
+  1405→        setDialogOpen(false);
+  1406→        fetchDepartments();
+  1407→        fetchStats();
+  1408→      } else {
+  1409→        toast.error(data.error || 'Failed to create department');
+  1410→      }
+  1411→    } catch {
+  1412→      toast.error('Network error');
+  1413→    } finally {
+  1414→      setCreating(false);
+  1415→    }
+  1416→  };
+  1417→
+  1418→  const openEditDept = (d: DepartmentInfo) => {
+  1419→    setEditDept(d);
+  1420→    setEditDeptName(d.name);
+  1421→    setEditDeptCode(d.code);
+  1422→    setEditDeptOpen(true);
+  1423→  };
+  1424→
+  1425→  const handleEditDept = async (e: React.FormEvent) => {
+  1426→    e.preventDefault();
+  1427→    if (!editDept || !editDeptName || !editDeptCode) return;
+  1428→    setSavingDept(true);
+  1429→
+  1430→    try {
+  1431→      const res = await fetch('/api/admin/departments', {
+  1432→        method: 'PUT',
+  1433→        headers: { 'Content-Type': 'application/json' },
+  1434→        body: JSON.stringify({ id: editDept.id, name: editDeptName, code: editDeptCode.toUpperCase() }),
+  1435→      });
+  1436→      const data = await res.json();
+  1437→      if (data.success) {
+  1438→        toast.success('Department updated successfully');
+  1439→        setEditDeptOpen(false);
+  1440→        fetchDepartments();
+  1441→        fetchStats();
+  1442→      } else {
+  1443→        toast.error(data.error || 'Failed to update department');
+  1444→      }
+  1445→    } catch {
+  1446→      toast.error('Network error');
+  1447→    } finally {
+  1448→      setSavingDept(false);
+  1449→    }
+  1450→  };
+  1451→
+  1452→  const openDeleteDept = (d: DepartmentInfo) => {
+  1453→    setDeleteDept(d);
+  1454→    setDeleteDeptOpen(true);
+  1455→  };
+  1456→
+  1457→  const handleDeleteDept = async () => {
+  1458→    if (!deleteDept) return;
+  1459→    setDeletingDept(true);
+  1460→
+  1461→    try {
+  1462→      const res = await fetch(`/api/admin/departments?id=${deleteDept.id}`, {
+  1463→        method: 'DELETE',
+  1464→      });
+  1465→      const data = await res.json();
+  1466→      if (data.success) {
+  1467→        toast.success('Department deleted successfully');
+  1468→        setDeleteDeptOpen(false);
+  1469→        fetchDepartments();
+  1470→        fetchStats();
+  1471→      } else {
+  1472→        toast.error(data.error || 'Failed to delete department');
+  1473→      }
+  1474→    } catch {
+  1475→      toast.error('Network error');
+  1476→    } finally {
+  1477→      setDeletingDept(false);
+  1478→    }
+  1479→  };
+  1480→
+  1481→  return (
+  1482→    <div className="space-y-6">
+  1483→      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
+  1484→        <CardHeader>
+  1485→          <div className="flex items-center justify-between">
+  1486→            <div>
+  1487→              <CardTitle className="flex items-center gap-2 text-base">
+  1488→                <Building2 className="size-5" />
+  1489→                Departments
+  1490→              </CardTitle>
+  1491→              <CardDescription>
+  1492→                {departments.length} department{departments.length !== 1 ? 's' : ''}
+  1493→              </CardDescription>
+  1494→            </div>
+  1495→            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+  1496→              <DialogTrigger asChild>
+  1497→                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
+  1498→                  <Plus className="size-4" />
+  1499→                  Add Department
+  1500→                </Button>
+  1501→              </DialogTrigger>
+  1502→              <DialogContent>
+  1503→                <DialogHeader>
+  1504→                  <DialogTitle>Create Department</DialogTitle>
+  1505→                  <DialogDescription>
+  1506→                    Add a new department to the system
+  1507→                  </DialogDescription>
+  1508→                </DialogHeader>
+  1509→                <form onSubmit={handleCreate} className="space-y-4">
+  1510→                  <div className="space-y-2">
+  1511→                    <Label htmlFor="dept-name">Department Name</Label>
+  1512→                    <Input
+  1513→                      id="dept-name"
+  1514→                      placeholder="e.g. Computer Science"
+  1515→                      value={name}
+  1516→                      onChange={(e) => setName(e.target.value)}
+  1517→                      required
+  1518→                      autoFocus
+  1519→                    />
+  1520→                  </div>
+  1521→                  <div className="space-y-2">
+  1522→                    <Label htmlFor="dept-code">Department Code</Label>
+  1523→                    <Input
+  1524→                      id="dept-code"
+  1525→                      placeholder="e.g. CSC"
+  1526→                      value={code}
+  1527→                      onChange={(e) => setCode(e.target.value.toUpperCase())}
+  1528→                      required
+  1529→                      maxLength={10}
+  1530→                      className="uppercase"
+  1531→                    />
+  1532→                  </div>
+  1533→                  <DialogFooter>
+  1534→                    <Button type="submit" disabled={creating} className="shadow-sm hover:shadow-md transition-shadow">
+  1535→                      {creating && <Loader2 className="size-4 animate-spin" />}
+  1536→                      Create Department
+  1537→                    </Button>
+  1538→                  </DialogFooter>
+  1539→                </form>
+  1540→              </DialogContent>
+  1541→            </Dialog>
+  1542→          </div>
+  1543→        </CardHeader>
+  1544→        <CardContent>
+  1545→          {departments.length === 0 ? (
+  1546→            <div className="text-center py-8 text-muted-foreground">
+  1547→              <Building2 className="size-10 mx-auto mb-2 opacity-30" />
+  1548→              <p>No departments yet. Create one to get started.</p>
+  1549→            </div>
+  1550→          ) : (
+  1551→            <div className="border rounded-lg overflow-hidden">
+  1552→              <Table>
+  1553→                <TableHeader>
+  1554→                  <TableRow className="bg-muted/50">
+  1555→                    <TableHead>Name</TableHead>
+  1556→                    <TableHead>Code</TableHead>
+  1557→                    <TableHead>Students</TableHead>
+  1558→                    <TableHead className="w-12">Actions</TableHead>
+  1559→                  </TableRow>
+  1560→                </TableHeader>
+  1561→                <TableBody>
+  1562→                  {departments.map((d, i) => (
+  1563→                    <TableRow
+  1564→                      key={d.id}
+  1565→                      className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+  1566→                    >
+  1567→                      <TableCell className="font-medium">{d.name}</TableCell>
+  1568→                      <TableCell>
+  1569→                        <Badge variant="outline" className="font-mono">
+  1570→                          {d.code}
+  1571→                        </Badge>
+  1572→                      </TableCell>
+  1573→                      <TableCell>{d.studentCount ?? 0}</TableCell>
+  1574→                      <TableCell>
+  1575→                        <RowActions
+  1576→                          onEdit={() => openEditDept(d)}
+  1577→                          onDelete={() => openDeleteDept(d)}
+  1578→                        />
+  1579→                      </TableCell>
+  1580→                    </TableRow>
+  1581→                  ))}
+  1582→                </TableBody>
+  1583→              </Table>
+  1584→            </div>
+  1585→          )}
+  1586→        </CardContent>
+  1587→      </Card>
+  1588→
+  1589→      {/* Edit Department Dialog */}
+  1590→      <Dialog open={editDeptOpen} onOpenChange={setEditDeptOpen}>
+  1591→        <DialogContent>
+  1592→          <DialogHeader>
+  1593→            <DialogTitle>Edit Department</DialogTitle>
+  1594→            <DialogDescription>
+  1595→              Update department information
+  1596→            </DialogDescription>
+  1597→          </DialogHeader>
+  1598→          <form onSubmit={handleEditDept} className="space-y-4">
+  1599→            <div className="space-y-2">
+  1600→              <Label htmlFor="edit-dept-name">Department Name</Label>
+  1601→              <Input
+  1602→                id="edit-dept-name"
+  1603→                value={editDeptName}
+  1604→                onChange={(e) => setEditDeptName(e.target.value)}
+  1605→                required
+  1606→                autoFocus
+  1607→              />
+  1608→            </div>
+  1609→            <div className="space-y-2">
+  1610→              <Label htmlFor="edit-dept-code">Department Code</Label>
+  1611→              <Input
+  1612→                id="edit-dept-code"
+  1613→                value={editDeptCode}
+  1614→                onChange={(e) => setEditDeptCode(e.target.value.toUpperCase())}
+  1615→                required
+  1616→                maxLength={10}
+  1617→                className="uppercase"
+  1618→              />
+  1619→            </div>
+  1620→            <DialogFooter>
+  1621→              <Button
+  1622→                type="submit"
+  1623→                disabled={savingDept || !editDeptName || !editDeptCode}
+  1624→                className="shadow-sm hover:shadow-md transition-shadow"
+  1625→              >
+  1626→                {savingDept && <Loader2 className="size-4 animate-spin" />}
+  1627→                Save Changes
+  1628→              </Button>
+  1629→            </DialogFooter>
+  1630→          </form>
+  1631→        </DialogContent>
+  1632→      </Dialog>
+  1633→
+  1634→      {/* Delete Department Confirmation */}
+  1635→      <AlertDialog open={deleteDeptOpen} onOpenChange={setDeleteDeptOpen}>
+  1636→        <AlertDialogContent>
+  1637→          <AlertDialogHeader>
+  1638→            <AlertDialogTitle>Delete Department</AlertDialogTitle>
+  1639→            <AlertDialogDescription>
+  1640→              Are you sure you want to delete <strong>{deleteDept?.name}</strong> ({deleteDept?.code})? This will also affect all students in this department. This action cannot be undone.
+  1641→            </AlertDialogDescription>
+  1642→          </AlertDialogHeader>
+  1643→          <AlertDialogFooter>
+  1644→            <AlertDialogCancel disabled={deletingDept}>Cancel</AlertDialogCancel>
+  1645→            <AlertDialogAction
+  1646→              onClick={handleDeleteDept}
+  1647→              disabled={deletingDept}
+  1648→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  1649→            >
+  1650→              {deletingDept && <Loader2 className="size-4 animate-spin mr-2" />}
+  1651→              Delete
+  1652→            </AlertDialogAction>
+  1653→          </AlertDialogFooter>
+  1654→        </AlertDialogContent>
+  1655→      </AlertDialog>
+  1656→    </div>
+  1657→  );
+  1658→}
+  1659→
+  1660→// ============================================================
+  1661→// Lecturers Tab
+  1662→// ============================================================
+  1663→function LecturersTab({
+  1664→  lecturers,
+  1665→  fetchLecturers,
+  1666→  fetchStats,
+  1667→}: {
+  1668→  lecturers: LecturerInfo[];
+  1669→  fetchLecturers: () => Promise<void>;
+  1670→  fetchStats: () => Promise<void>;
+  1671→}) {
+  1672→  const [name, setName] = useState('');
+  1673→  const [email, setEmail] = useState('');
+  1674→  const [lecturerDeptCode, setLecturerDeptCode] = useState<string>('none');
+  1675→  const [creating, setCreating] = useState(false);
+  1676→  const [dialogOpen, setDialogOpen] = useState(false);
+  1677→
+  1678→  // Edit lecturer state
+  1679→  const [editLecturerOpen, setEditLecturerOpen] = useState(false);
+  1680→  const [editLecturer, setEditLecturer] = useState<LecturerInfo | null>(null);
+  1681→  const [editLecturerName, setEditLecturerName] = useState('');
+  1682→  const [editLecturerEmail, setEditLecturerEmail] = useState('');
+  1683→  const [editLecturerDeptCode, setEditLecturerDeptCode] = useState<string>('none');
+  1684→  const [savingLecturer, setSavingLecturer] = useState(false);
+  1685→
+  1686→  // Delete lecturer state
+  1687→  const [deleteLecturerOpen, setDeleteLecturerOpen] = useState(false);
+  1688→  const [deleteLecturer, setDeleteLecturer] = useState<LecturerInfo | null>(null);
+  1689→  const [deletingLecturer, setDeletingLecturer] = useState(false);
+  1690→
+  1691→  const handleCreate = async (e: React.FormEvent) => {
+  1692→    e.preventDefault();
+  1693→    if (!name || !email) return;
+  1694→    setCreating(true);
+  1695→
+  1696→    try {
+  1697→      const res = await fetch('/api/admin/lecturers', {
+  1698→        method: 'POST',
+  1699→        headers: { 'Content-Type': 'application/json' },
+  1700→        body: JSON.stringify({
+  1701→          name,
+  1702→          email,
+  1703→          departmentId: lecturerDeptCode === 'none' ? null : lecturerDeptCode,
+  1704→        }),
+  1705→      });
+  1706→      const data = await res.json();
+  1707→      if (data.success) {
+  1708→        toast.success('Lecturer created! Default password: CheckIn@2024', { duration: 10000 });
+  1709→        setName('');
+  1710→        setEmail('');
+  1711→        setLecturerDeptCode('none');
+  1712→        setDialogOpen(false);
+  1713→        fetchLecturers();
+  1714→        fetchStats();
+  1715→      } else {
+  1716→        toast.error(data.error || 'Failed to create lecturer');
+  1717→      }
+  1718→    } catch {
+  1719→      toast.error('Network error');
+  1720→    } finally {
+  1721→      setCreating(false);
+  1722→    }
+  1723→  };
+  1724→
+  1725→  const openEditLecturer = (l: LecturerInfo) => {
+  1726→    setEditLecturer(l);
+  1727→    setEditLecturerName(l.name);
+  1728→    setEditLecturerEmail(l.email);
+  1729→    setEditLecturerDeptCode(l.departmentId ?? 'none');
+  1730→    setEditLecturerOpen(true);
+  1731→  };
+  1732→
+  1733→  const handleEditLecturer = async (e: React.FormEvent) => {
+  1734→    e.preventDefault();
+  1735→    if (!editLecturer || !editLecturerName || !editLecturerEmail) return;
+  1736→    setSavingLecturer(true);
+  1737→
+  1738→    try {
+  1739→      const res = await fetch('/api/admin/lecturers', {
+  1740→        method: 'PUT',
+  1741→        headers: { 'Content-Type': 'application/json' },
+  1742→        body: JSON.stringify({
+  1743→          id: editLecturer.id,
+  1744→          name: editLecturerName,
+  1745→          email: editLecturerEmail,
+  1746→          departmentId: editLecturerDeptCode === 'none' ? null : editLecturerDeptCode,
+  1747→        }),
+  1748→      });
+  1749→      const data = await res.json();
+  1750→      if (data.success) {
+  1751→        toast.success('Lecturer updated successfully');
+  1752→        setEditLecturerOpen(false);
+  1753→        fetchLecturers();
+  1754→        fetchStats();
+  1755→      } else {
+  1756→        toast.error(data.error || 'Failed to update lecturer');
+  1757→      }
+  1758→    } catch {
+  1759→      toast.error('Network error');
+  1760→    } finally {
+  1761→      setSavingLecturer(false);
+  1762→    }
+  1763→  };
+  1764→
+  1765→  const openDeleteLecturer = (l: LecturerInfo) => {
+  1766→    setDeleteLecturer(l);
+  1767→    setDeleteLecturerOpen(true);
+  1768→  };
+  1769→
+  1770→  const handleDeleteLecturer = async () => {
+  1771→    if (!deleteLecturer) return;
+  1772→    setDeletingLecturer(true);
+  1773→
+  1774→    try {
+  1775→      const res = await fetch(`/api/admin/lecturers?id=${deleteLecturer.id}`, {
+  1776→        method: 'DELETE',
+  1777→      });
+  1778→      const data = await res.json();
+  1779→      if (data.success) {
+  1780→        toast.success('Lecturer deleted successfully');
+  1781→        setDeleteLecturerOpen(false);
+  1782→        fetchLecturers();
+  1783→        fetchStats();
+  1784→      } else {
+  1785→        toast.error(data.error || 'Failed to delete lecturer');
+  1786→      }
+  1787→    } catch {
+  1788→      toast.error('Network error');
+  1789→    } finally {
+  1790→      setDeletingLecturer(false);
+  1791→    }
+  1792→  };
+  1793→
+  1794→  return (
+  1795→    <div className="space-y-6">
+  1796→      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
+  1797→        <CardHeader>
+  1798→          <div className="flex items-center justify-between">
+  1799→            <div>
+  1800→              <CardTitle className="flex items-center gap-2 text-base">
+  1801→                <Users className="size-5" />
+  1802→                Lecturers
+  1803→              </CardTitle>
+  1804→              <CardDescription>
+  1805→                {lecturers.length} lecturer{lecturers.length !== 1 ? 's' : ''}
+  1806→              </CardDescription>
+  1807→            </div>
+  1808→            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+  1809→              <DialogTrigger asChild>
+  1810→                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
+  1811→                  <Plus className="size-4" />
+  1812→                  Add Lecturer
+  1813→                </Button>
+  1814→              </DialogTrigger>
+  1815→              <DialogContent>
+  1816→                <DialogHeader>
+  1817→                  <DialogTitle>Create Lecturer</DialogTitle>
+  1818→                  <DialogDescription>
+  1819→                    Add a new lecturer to the system
+  1820→                  </DialogDescription>
+  1821→                </DialogHeader>
+  1822→                <form onSubmit={handleCreate} className="space-y-4">
+  1823→                  <div className="space-y-2">
+  1824→                    <Label htmlFor="lect-name">Full Name</Label>
+  1825→                    <Input
+  1826→                      id="lect-name"
+  1827→                      placeholder="e.g. Dr. Jane Smith"
+  1828→                      value={name}
+  1829→                      onChange={(e) => setName(e.target.value)}
+  1830→                      required
+  1831→                      autoFocus
+  1832→                    />
+  1833→                  </div>
+  1834→                  <div className="space-y-2">
+  1835→                    <Label htmlFor="lect-email">Email</Label>
+  1836→                    <Input
+  1837→                      id="lect-email"
+  1838→                      type="email"
+  1839→                      placeholder="e.g. j.smith@university.edu"
+  1840→                      value={email}
+  1841→                      onChange={(e) => setEmail(e.target.value)}
+  1842→                      required
+  1843→                    />
+  1844→                  </div>
+  1845→                  <div className="space-y-2">
+  1846→                    <Label htmlFor="lect-dept">Department (optional)</Label>
+  1847→                    <Select value={lecturerDeptCode} onValueChange={setLecturerDeptCode}>
+  1848→                      <SelectTrigger id="lect-dept" className="w-full">
+  1849→                        <SelectValue placeholder="Select department" />
+  1850→                      </SelectTrigger>
+  1851→                      <SelectContent>
+  1852→                        <SelectItem value="none">None</SelectItem>
+  1853→                        {SLIT_DEPARTMENTS.map((d) => (
+  1854→                          <SelectItem key={d.code} value={d.code}>
+  1855→                            {d.name} ({d.code})
+  1856→                          </SelectItem>
+  1857→                        ))}
+  1858→                      </SelectContent>
+  1859→                    </Select>
+  1860→                  </div>
+  1861→                  <DialogFooter>
+  1862→                    <Button type="submit" disabled={creating} className="shadow-sm hover:shadow-md transition-shadow">
+  1863→                      {creating && <Loader2 className="size-4 animate-spin" />}
+  1864→                      Create Lecturer
+  1865→                    </Button>
+  1866→                  </DialogFooter>
+  1867→                </form>
+  1868→              </DialogContent>
+  1869→            </Dialog>
+  1870→          </div>
+  1871→        </CardHeader>
+  1872→        <CardContent>
+  1873→          {lecturers.length === 0 ? (
+  1874→            <div className="text-center py-8 text-muted-foreground">
+  1875→              <Users className="size-10 mx-auto mb-2 opacity-30" />
+  1876→              <p>No lecturers yet. Add one to get started.</p>
+  1877→            </div>
+  1878→          ) : (
+  1879→            <div className="border rounded-lg overflow-hidden">
+  1880→              <div className="max-h-96 overflow-y-auto custom-scrollbar">
+  1881→                <Table>
+  1882→                  <TableHeader>
+  1883→                    <TableRow className="bg-muted/50">
+  1884→                      <TableHead>Name</TableHead>
+  1885→                      <TableHead>Email</TableHead>
+  1886→                      <TableHead>Department</TableHead>
+  1887→                      <TableHead>Courses</TableHead>
+  1888→                      <TableHead className="w-12">Actions</TableHead>
+  1889→                    </TableRow>
+  1890→                  </TableHeader>
+  1891→                  <TableBody>
+  1892→                    {lecturers.map((l, i) => (
+  1893→                      <TableRow
+  1894→                        key={l.id}
+  1895→                        className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+  1896→                      >
+  1897→                        <TableCell className="font-medium">{l.name}</TableCell>
+  1898→                        <TableCell className="text-muted-foreground">{l.email}</TableCell>
+  1899→                        <TableCell>
+  1900→                          {l.departmentName ? (
+  1901→                            <Badge variant="outline" className="text-xs">
+  1902→                              {l.departmentName}
+  1903→                            </Badge>
+  1904→                          ) : (
+  1905→                            <span className="text-muted-foreground text-sm">—</span>
+  1906→                          )}
+  1907→                        </TableCell>
+  1908→                        <TableCell>
+  1909→                          {l.courses.length === 0 ? (
+  1910→                            <span className="text-muted-foreground text-sm">No courses</span>
+  1911→                          ) : (
+  1912→                            <div className="flex flex-wrap gap-1">
+  1913→                              {l.courses.map((c) => (
+  1914→                                <Badge key={c.id} variant="secondary" className="text-xs">
+  1915→                                  {c.code}
+  1916→                                </Badge>
+  1917→                              ))}
+  1918→                            </div>
+  1919→                          )}
+  1920→                        </TableCell>
+  1921→                        <TableCell>
+  1922→                          <RowActions
+  1923→                            onEdit={() => openEditLecturer(l)}
+  1924→                            onDelete={() => openDeleteLecturer(l)}
+  1925→                          />
+  1926→                        </TableCell>
+  1927→                      </TableRow>
+  1928→                    ))}
+  1929→                  </TableBody>
+  1930→                </Table>
+  1931→              </div>
+  1932→            </div>
+  1933→          )}
+  1934→        </CardContent>
+  1935→      </Card>
+  1936→
+  1937→      {/* Edit Lecturer Dialog */}
+  1938→      <Dialog open={editLecturerOpen} onOpenChange={setEditLecturerOpen}>
+  1939→        <DialogContent>
+  1940→          <DialogHeader>
+  1941→            <DialogTitle>Edit Lecturer</DialogTitle>
+  1942→            <DialogDescription>
+  1943→              Update lecturer information
+  1944→            </DialogDescription>
+  1945→          </DialogHeader>
+  1946→          <form onSubmit={handleEditLecturer} className="space-y-4">
+  1947→            <div className="space-y-2">
+  1948→              <Label htmlFor="edit-lect-name">Full Name</Label>
+  1949→              <Input
+  1950→                id="edit-lect-name"
+  1951→                value={editLecturerName}
+  1952→                onChange={(e) => setEditLecturerName(e.target.value)}
+  1953→                required
+  1954→                autoFocus
+  1955→              />
+  1956→            </div>
+  1957→            <div className="space-y-2">
+  1958→              <Label htmlFor="edit-lect-email">Email</Label>
+  1959→              <Input
+  1960→                id="edit-lect-email"
+  1961→                type="email"
+  1962→                value={editLecturerEmail}
+  1963→                onChange={(e) => setEditLecturerEmail(e.target.value)}
+  1964→                required
+  1965→              />
+  1966→            </div>
+  1967→            <div className="space-y-2">
+  1968→              <Label htmlFor="edit-lect-dept">Department (optional)</Label>
+  1969→              <Select value={editLecturerDeptCode} onValueChange={setEditLecturerDeptCode}>
+  1970→                <SelectTrigger id="edit-lect-dept" className="w-full">
+  1971→                  <SelectValue placeholder="Select department" />
+  1972→                </SelectTrigger>
+  1973→                <SelectContent>
+  1974→                  <SelectItem value="none">None</SelectItem>
+  1975→                  {SLIT_DEPARTMENTS.map((d) => (
+  1976→                    <SelectItem key={d.code} value={d.code}>
+  1977→                      {d.name} ({d.code})
+  1978→                    </SelectItem>
+  1979→                  ))}
+  1980→                </SelectContent>
+  1981→              </Select>
+  1982→            </div>
+  1983→            <DialogFooter>
+  1984→              <Button
+  1985→                type="submit"
+  1986→                disabled={savingLecturer || !editLecturerName || !editLecturerEmail}
+  1987→                className="shadow-sm hover:shadow-md transition-shadow"
+  1988→              >
+  1989→                {savingLecturer && <Loader2 className="size-4 animate-spin" />}
+  1990→                Save Changes
+  1991→              </Button>
+  1992→            </DialogFooter>
+  1993→          </form>
+  1994→        </DialogContent>
+  1995→      </Dialog>
+  1996→
+  1997→      {/* Delete Lecturer Confirmation */}
+  1998→      <AlertDialog open={deleteLecturerOpen} onOpenChange={setDeleteLecturerOpen}>
+  1999→        <AlertDialogContent>
+
+[showing lines 1000-1999 of 2833; use offset=2000 with limit to continue reading]

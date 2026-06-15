@@ -1,0 +1,1442 @@
+     1→// ============================================================
+     2→// checkIn - Lecturer Portal Component
+     3→// ============================================================
+     4→
+     5→'use client';
+     6→
+     7→import { useEffect, useState, useCallback, useRef } from 'react';
+     8→import { format } from 'date-fns';
+     9→import {
+    10→  LogOut,
+    11→  Plus,
+    12→  Play,
+    13→  Square,
+    14→  BarChart3,
+    15→  ClipboardCheck,
+    16→  Clock,
+    17→  MapPin,
+    18→  Users,
+    19→  Loader2,
+    20→  Radio,
+    21→  Eye,
+    22→  CheckCircle2,
+    23→  XCircle,
+    24→  ArrowLeft,
+    25→  RefreshCw,
+    26→  UserCircle,
+    27→  Activity,
+    28→  BookOpen,
+    29→  ClipboardList,
+    30→  TrendingUp,
+    31→} from 'lucide-react';
+    32→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    33→import { Badge } from '@/components/ui/badge';
+    34→import { Button } from '@/components/ui/button';
+    35→import { Input } from '@/components/ui/input';
+    36→import { Label } from '@/components/ui/label';
+    37→import { Separator } from '@/components/ui/separator';
+    38→import { Slider } from '@/components/ui/slider';
+    39→import { Checkbox } from '@/components/ui/checkbox';
+    40→import {
+    41→  Tabs,
+    42→  TabsContent,
+    43→  TabsList,
+    44→  TabsTrigger,
+    45→} from '@/components/ui/tabs';
+    46→import {
+    47→  Dialog,
+    48→  DialogContent,
+    49→  DialogHeader,
+    50→  DialogTitle,
+    51→  DialogFooter,
+    52→} from '@/components/ui/dialog';
+    53→import {
+    54→  Table,
+    55→  TableBody,
+    56→  TableCell,
+    57→  TableHead,
+    58→  TableHeader,
+    59→  TableRow,
+    60→} from '@/components/ui/table';
+    61→import { Skeleton } from '@/components/ui/skeleton';
+    62→import {
+    63→  Select,
+    64→  SelectContent,
+    65→  SelectItem,
+    66→  SelectTrigger,
+    67→  SelectValue,
+    68→} from '@/components/ui/select';
+    69→import { Progress } from '@/components/ui/progress';
+    70→import { PieChart, Pie, Cell } from 'recharts';
+    71→import { toast } from 'sonner';
+    72→import { useAuthStore } from '@/hooks/use-auth';
+    73→import { useGeoLocation } from '@/hooks/use-geo-location';
+    74→import { AnalyticsPanel } from './analytics-panel';
+    75→import { GradingPanel } from './grading-panel';
+    76→import { ExportPanel } from './export-panel';
+    77→import { ProfilePanel } from './profile-panel';
+    78→import type {
+    79→  SessionInfo,
+    80→  AttendanceInfo,
+    81→  AttendanceStatus,
+    82→  VenueInfo,
+    83→  DepartmentInfo,
+    84→  CourseInfo,
+    85→  ApiResponse,
+    86→} from '@/lib/types';
+    87→import {
+    88→  SESSION_POLL_INTERVAL,
+    89→  ATTENDANCE_POLL_INTERVAL,
+    90→  DEFAULT_DISTANCE_THRESHOLD,
+    91→  DEFAULT_SESSION_DURATION,
+    92→  SCHOOL,
+    93→  VALID_LEVELS,
+    94→} from '@/lib/constants';
+    95→
+    96→// ============================================================
+    97→// Session Status Badge
+    98→// ============================================================
+    99→function SessionStatusBadge({ status }: { status: string }) {
+   100→  const config: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string; label: string }> = {
+   101→    scheduled: { variant: 'outline', className: 'border-slate-400 text-slate-600 dark:text-slate-300', label: 'Scheduled' },
+   102→    active: { variant: 'default', className: 'bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse', label: 'Active' },
+   103→    completed: { variant: 'secondary', className: '', label: 'Completed' },
+   104→    cancelled: { variant: 'destructive', className: '', label: 'Cancelled' },
+   105→  };
+   106→  const c = config[status] || { variant: 'outline' as const, className: '', label: status };
+   107→  return (
+   108→    <Badge variant={c.variant} className={c.className}>
+   109→      {c.label}
+   110→    </Badge>
+   111→  );
+   112→}
+   113→
+   114→// ============================================================
+   115→// Attendance Status Badge
+   116→// ============================================================
+   117→function AttendanceStatusBadge({ status }: { status: AttendanceStatus }) {
+   118→  const config: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string; label: string }> = {
+   119→    present: { variant: 'default', className: 'bg-emerald-600 hover:bg-emerald-700 text-white', label: 'Present' },
+   120→    absent: { variant: 'destructive', className: '', label: 'Absent' },
+   121→    pending_review: { variant: 'secondary', className: 'bg-amber-500 hover:bg-amber-600 text-white', label: 'Pending Review' },
+   122→    pending: { variant: 'secondary', className: 'bg-amber-500 hover:bg-amber-600 text-white', label: 'Pending' },
+   123→    rejected_location: { variant: 'destructive', className: '', label: 'Rejected (Loc)' },
+   124→    rejected_identity: { variant: 'destructive', className: '', label: 'Rejected (ID)' },
+   125→  };
+   126→  const c = config[status] || { variant: 'outline' as const, className: '', label: status };
+   127→  return <Badge variant={c.variant} className={c.className}>{c.label}</Badge>;
+   128→}
+   129→
+   130→// ============================================================
+   131→// Create Session Dialog
+   132→// ============================================================
+   133→interface CreateSessionDialogProps {
+   134→  open: boolean;
+   135→  onOpenChange: (open: boolean) => void;
+   136→  lecturerId: string;
+   137→  courses: CourseInfo[];
+   138→  onCreated: () => void;
+   139→}
+   140→
+   141→function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreated }: CreateSessionDialogProps) {
+   142→  const [title, setTitle] = useState('');
+   143→  const [courseId, setCourseId] = useState('');
+   144→  const [venueId, setVenueId] = useState('');
+   145→  const [level, setLevel] = useState<string>('100');
+   146→  const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
+   147→  const [distanceThreshold, setDistanceThreshold] = useState(DEFAULT_DISTANCE_THRESHOLD);
+   148→  const [durationMinutes, setDurationMinutes] = useState(DEFAULT_SESSION_DURATION);
+   149→  const [scheduledAt, setScheduledAt] = useState('');
+   150→  const [venues, setVenues] = useState<VenueInfo[]>([]);
+   151→  const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
+   152→  const [saving, setSaving] = useState(false);
+   153→
+   154→  // Fetch venues and departments when dialog opens
+   155→  useEffect(() => {
+   156→    if (open) {
+   157→      fetch('/api/admin/venues')
+   158→        .then((r) => r.json())
+   159→        .then((json) => { if (json.success) setVenues(json.data); })
+   160→        .catch(() => toast.error('Failed to load venues'));
+   161→
+   162→      fetch('/api/admin/departments')
+   163→        .then((r) => r.json())
+   164→        .then((json) => { if (json.success) setDepartments(json.data); })
+   165→        .catch(() => toast.error('Failed to load departments'));
+   166→    }
+   167→  }, [open]);
+   168→
+   169→  const resetForm = () => {
+   170→    setTitle('');
+   171→    setCourseId('');
+   172→    setVenueId('');
+   173→    setLevel('100');
+   174→    setSelectedDepts([]);
+   175→    setDistanceThreshold(DEFAULT_DISTANCE_THRESHOLD);
+   176→    setDurationMinutes(DEFAULT_SESSION_DURATION);
+   177→    setScheduledAt('');
+   178→  };
+   179→
+   180→  const handleDeptToggle = (deptId: string) => {
+   181→    setSelectedDepts((prev) =>
+   182→      prev.includes(deptId) ? prev.filter((d) => d !== deptId) : [...prev, deptId]
+   183→    );
+   184→  };
+   185→
+   186→  const handleSubmit = async () => {
+   187→    if (!title || !courseId || !venueId || !level || selectedDepts.length === 0 || !scheduledAt) {
+   188→      toast.error('Please fill in all required fields');
+   189→      return;
+   190→    }
+   191→
+   192→    setSaving(true);
+   193→    try {
+   194→      const res = await fetch('/api/lecturer/sessions', {
+   195→        method: 'POST',
+   196→        headers: { 'Content-Type': 'application/json' },
+   197→        body: JSON.stringify({
+   198→          title,
+   199→          courseId,
+   200→          venueId,
+   201→          lecturerId,
+   202→          level: parseInt(level, 10),
+   203→          departmentIds: selectedDepts,
+   204→          distanceThreshold,
+   205→          durationMinutes,
+   206→          scheduledAt,
+   207→        }),
+   208→      });
+   209→      const json = await res.json();
+   210→
+   211→      if (json.success) {
+   212→        toast.success('Session created successfully');
+   213→        resetForm();
+   214→        onOpenChange(false);
+   215→        onCreated();
+   216→      } else if (res.status === 409) {
+   217→        const conflicts = json.data?.conflicts || [];
+   218→        if (json.error?.includes('Venue')) {
+   219→          const conflictList = conflicts.map((c: { title: string; courseName: string; scheduledAt: string }) =>
+   220→            `"${c.title}" (${c.courseName}) at ${format(new Date(c.scheduledAt), 'PPp')}`
+   221→          ).join(', ');
+   222→          toast.error(`Venue conflict: ${conflictList}`, { duration: 8000 });
+   223→        } else if (json.error?.includes('department') || json.error?.includes('Department')) {
+   224→          const conflictList = conflicts.map((c: { title: string; conflictingDepartments?: string[] }) =>
+   225→            `"${c.title}" (Depts: ${c.conflictingDepartments?.join(', ')})`
+   226→          ).join(', ');
+   227→          toast.error(`Department conflict: ${conflictList}`, { duration: 8000 });
+   228→        } else {
+   229→          toast.error(json.error || 'Scheduling conflict detected');
+   230→        }
+   231→      } else {
+   232→        toast.error(json.error || 'Failed to create session');
+   233→      }
+   234→    } catch {
+   235→      toast.error('Network error creating session');
+   236→    } finally {
+   237→      setSaving(false);
+   238→    }
+   239→  };
+   240→
+   241→  // Filter departments for selected course - if course has specific departments, show those; otherwise show all
+   242→  const selectedCourse = courses.find((c) => c.id === courseId);
+   243→  const courseDepartments = selectedCourse?.departments?.length
+   244→    ? selectedCourse.departments
+   245→    : departments;
+   246→
+   247→  return (
+   248→    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+   249→      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+   250→        <DialogHeader>
+   251→          <DialogTitle>Create New Session</DialogTitle>
+   252→        </DialogHeader>
+   253→
+   254→        <div className="space-y-4 py-4">
+   255→          {/* Title */}
+   256→          <div className="space-y-2">
+   257→            <Label htmlFor="session-title">Session Title *</Label>
+   258→            <Input
+   259→              id="session-title"
+   260→              value={title}
+   261→              onChange={(e) => setTitle(e.target.value)}
+   262→              placeholder="e.g. Week 5 Lecture"
+   263→            />
+   264→          </div>
+   265→
+   266→          {/* Course & Level */}
+   267→          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   268→            <div className="space-y-2">
+   269→              <Label>Course *</Label>
+   270→              <select
+   271→                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+   272→                value={courseId}
+   273→                onChange={(e) => {
+   274→                  const val = e.target.value;
+   275→                  setCourseId(val);
+   276→                  setSelectedDepts([]);
+   277→                  const course = courses.find((c) => c.id === val);
+   278→                  if (course) setLevel(String(course.level ?? 100));
+   279→                }}
+   280→              >
+   281→                <option value="">Select course</option>
+   282→                {courses.length === 0 ? (
+   283→                  <option value="" disabled>No courses assigned yet</option>
+   284→                ) : (
+   285→                  courses.map((c) => (
+   286→                    <option key={c.id} value={c.id}>
+   287→                      {c.code} - {c.name}
+   288→                    </option>
+   289→                  ))
+   290→                )}
+   291→              </select>
+   292→            </div>
+   293→
+   294→            <div className="space-y-2">
+   295→              <Label htmlFor="session-level">Level *</Label>
+   296→              <Select value={level} onValueChange={setLevel}>
+   297→                <SelectTrigger id="session-level" className="w-full">
+   298→                  <SelectValue placeholder="Select level" />
+   299→                </SelectTrigger>
+   300→                <SelectContent>
+   301→                  {VALID_LEVELS.map((l) => (
+   302→                    <SelectItem key={String(l)} value={String(l)}>
+   303→                      {l} Level
+   304→                    </SelectItem>
+   305→                  ))}
+   306→                </SelectContent>
+   307→              </Select>
+   308→            </div>
+   309→          </div>
+   310→
+   311→          {/* Venue */}
+   312→          <div className="space-y-2">
+   313→            <Label>Venue *</Label>
+   314→            <select
+   315→              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+   316→              value={venueId}
+   317→              onChange={(e) => setVenueId(e.target.value)}
+   318→            >
+   319→              <option value="">Select venue</option>
+   320→              {venues.length === 0 ? (
+   321→                <option value="" disabled>No venues available</option>
+   322→              ) : (
+   323→                venues.map((v) => (
+   324→                  <option key={v.id} value={v.id}>
+   325→                    {v.name}
+   326→                  </option>
+   327→                ))
+   328→              )}
+   329→            </select>
+   330→          </div>
+   331→
+   332→          {/* Departments */}
+   333→          <div className="space-y-2">
+   334→            <Label>Departments * (select one or more)</Label>
+   335→            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto border rounded-md p-3 bg-blue-50/30 dark:bg-blue-950/10">
+   336→              {courseDepartments.map((dept) => (
+   337→                <div key={dept.id} className="flex items-center space-x-2">
+   338→                  <Checkbox
+   339→                    id={`dept-${dept.id}`}
+   340→                    checked={selectedDepts.includes(dept.id)}
+   341→                    onCheckedChange={() => handleDeptToggle(dept.id)}
+   342→                  />
+   343→                  <label
+   344→                    htmlFor={`dept-${dept.id}`}
+   345→                    className="text-sm leading-none cursor-pointer"
+   346→                  >
+   347→                    {dept.name}
+   348→                  </label>
+   349→                </div>
+   350→              ))}
+   351→              {courseDepartments.length === 0 && (
+   352→                <p className="text-xs text-muted-foreground col-span-3">
+   353→                  No departments available. Ask admin to create departments.
+   354→                </p>
+   355→              )}
+   356→            </div>
+   357→          </div>
+   358→
+   359→          {/* Distance Threshold */}
+   360→          <div className="space-y-2">
+   361→            <Label>Distance Threshold: {distanceThreshold}m</Label>
+   362→            <Slider
+   363→              value={[distanceThreshold]}
+   364→              onValueChange={([val]) => setDistanceThreshold(val)}
+   365→              min={10}
+   366→              max={500}
+   367→              step={10}
+   368→            />
+   369→            <div className="flex justify-between text-xs text-muted-foreground">
+   370→              <span>10m</span>
+   371→              <span>500m</span>
+   372→            </div>
+   373→          </div>
+   374→
+   375→          {/* Duration */}
+   376→          <div className="space-y-2">
+   377→            <Label htmlFor="session-duration">Duration (minutes) *</Label>
+   378→            <Input
+   379→              id="session-duration"
+   380→              type="number"
+   381→              min={5}
+   382→              max={120}
+   383→              value={durationMinutes}
+   384→              onChange={(e) => setDurationMinutes(parseInt(e.target.value) || 15)}
+   385→            />
+   386→          </div>
+   387→
+   388→          {/* Scheduled Date/Time */}
+   389→          <div className="space-y-2">
+   390→            <Label htmlFor="session-scheduled">Scheduled Date & Time *</Label>
+   391→            <Input
+   392→              id="session-scheduled"
+   393→              type="datetime-local"
+   394→              value={scheduledAt}
+   395→              onChange={(e) => setScheduledAt(e.target.value)}
+   396→            />
+   397→          </div>
+   398→        </div>
+   399→
+   400→        <DialogFooter>
+   401→          <Button variant="outline" onClick={() => onOpenChange(false)}>
+   402→            Cancel
+   403→          </Button>
+   404→          <Button onClick={handleSubmit} disabled={saving}>
+   405→            {saving ? (
+   406→              <>
+   407→                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating
+   408→              </>
+   409→            ) : (
+   410→              <>
+   411→                <Plus className="mr-2 h-4 w-4" /> Create Session
+   412→              </>
+   413→            )}
+   414→          </Button>
+   415→        </DialogFooter>
+   416→      </DialogContent>
+   417→    </Dialog>
+   418→  );
+   419→}
+   420→
+   421→// ============================================================
+   422→// Live Session Monitor
+   423→// ============================================================
+   424→interface LiveMonitorProps {
+   425→  session: SessionInfo;
+   426→}
+   427→
+   428→function LiveMonitor({ session }: LiveMonitorProps) {
+   429→  const [attendances, setAttendances] = useState<AttendanceInfo[]>([]);
+   430→  const [loading, setLoading] = useState(true);
+   431→  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   432→
+   433→  const fetchAttendances = useCallback(async () => {
+   434→    try {
+   435→      const res = await fetch(`/api/lecturer/analytics?sessionId=${session.id}`);
+   436→      const json = await res.json();
+   437→      if (json.success && json.data) {
+   438→        setAttendances(json.data.attendances || []);
+   439→      }
+   440→    } catch {
+   441→      // Silently fail on polling
+   442→    } finally {
+   443→      setLoading(false);
+   444→    }
+   445→  }, [session.id]);
+   446→
+   447→  useEffect(() => {
+   448→    fetchAttendances();
+   449→    intervalRef.current = setInterval(fetchAttendances, ATTENDANCE_POLL_INTERVAL);
+   450→    return () => {
+   451→      if (intervalRef.current) clearInterval(intervalRef.current);
+   452→    };
+   453→  }, [fetchAttendances]);
+   454→
+   455→  const present = attendances.filter((a) => a.status === 'present').length;
+   456→  const pending = attendances.filter((a) => a.status === 'pending_review' || a.status === 'pending').length;
+   457→  const rejected = attendances.filter(
+   458→    (a) => a.status === 'rejected_location' || a.status === 'rejected_identity'
+   459→  ).length;
+   460→  const total = session.totalTargetStudents || 0;
+   461→
+   462→  return (
+   463→    <Card className="card-elevated border-emerald-200 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/10">
+   464→      <CardHeader className="pb-3">
+   465→        <div className="flex items-center gap-2">
+   466→          <Radio className="h-4 w-4 text-emerald-600 animate-pulse" />
+   467→          <CardTitle className="text-base">Live Monitor</CardTitle>
+   468→        </div>
+   469→      </CardHeader>
+   470→      <CardContent className="space-y-4">
+   471→        {/* Stats */}
+   472→        <div className="grid grid-cols-3 gap-3">
+   473→          <div className="text-center p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+   474→            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{present}</div>
+   475→            <div className="text-xs text-muted-foreground">Present</div>
+   476→          </div>
+   477→          <div className="text-center p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
+   478→            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{pending}</div>
+   479→            <div className="text-xs text-muted-foreground">Pending</div>
+   480→          </div>
+   481→          <div className="text-center p-3 rounded-lg bg-red-50 dark:bg-red-950/30">
+   482→            <div className="text-2xl font-bold text-red-600 dark:text-red-400">{rejected}</div>
+   483→            <div className="text-xs text-muted-foreground">Rejected</div>
+   484→          </div>
+   485→        </div>
+   486→
+   487→        {/* Progress */}
+   488→        {total > 0 && (
+   489→          <div className="space-y-1">
+   490→            <div className="flex justify-between text-xs text-muted-foreground">
+   491→              <span>Check-in Progress</span>
+   492→              <span>{present + pending + rejected} / {total}</span>
+   493→            </div>
+   494→            <Progress value={((present + pending + rejected) / total) * 100} className="h-2" />
+   495→          </div>
+   496→        )}
+   497→
+   498→        {/* Recent Check-ins */}
+   499→        <div className="max-h-60 overflow-y-auto custom-scrollbar">
+   500→          {loading ? (
+   501→            <div className="space-y-2">
+   502→              {Array.from({ length: 3 }).map((_, i) => (
+   503→                <Skeleton key={i} className="h-12" />
+   504→              ))}
+   505→            </div>
+   506→          ) : attendances.length === 0 ? (
+   507→            <p className="text-center text-sm text-muted-foreground py-4">
+   508→              No check-ins yet
+   509→            </p>
+   510→          ) : (
+   511→            <Table>
+   512→              <TableHeader>
+   513→                <TableRow>
+   514→                  <TableHead>Student</TableHead>
+   515→                  <TableHead>Time</TableHead>
+   516→                  <TableHead>Score</TableHead>
+   517→                  <TableHead>Status</TableHead>
+   518→                </TableRow>
+   519→              </TableHeader>
+   520→              <TableBody>
+   521→                {attendances
+   522→                  .filter((a) => a.checkInTime)
+   523→                  .sort((a, b) => new Date(b.checkInTime!).getTime() - new Date(a.checkInTime!).getTime())
+   524→                  .map((a) => (
+   525→                    <TableRow key={a.id}>
+   526→                      <TableCell className="font-medium text-sm">
+   527→                        {a.studentName || a.studentId.slice(0, 8)}
+   528→                      </TableCell>
+   529→                      <TableCell className="text-sm">
+   530→                        {a.checkInTime ? format(new Date(a.checkInTime), 'HH:mm:ss') : '—'}
+   531→                      </TableCell>
+   532→                      <TableCell className="text-sm">
+   533→                        {a.similarityScore !== null ? `${a.similarityScore.toFixed(1)}%` : '—'}
+   534→                      </TableCell>
+   535→                      <TableCell>
+   536→                        <AttendanceStatusBadge status={a.status} />
+   537→                      </TableCell>
+   538→                    </TableRow>
+   539→                  ))}
+   540→              </TableBody>
+   541→            </Table>
+   542→          )}
+   543→        </div>
+   544→      </CardContent>
+   545→    </Card>
+   546→  );
+   547→}
+   548→
+   549→// ============================================================
+   550→// Session Card
+   551→// ============================================================
+   552→interface SessionCardProps {
+   553→  session: SessionInfo;
+   554→  onRefresh: () => void;
+   555→  onViewAnalytics: (sessionId: string) => void;
+   556→}
+   557→
+   558→function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) {
+   559→  const { getCurrentPosition } = useGeoLocation();
+   560→  const [starting, setStarting] = useState(false);
+   561→  const [ending, setEnding] = useState(false);
+   562→  const [showLiveMonitor, setShowLiveMonitor] = useState(false);
+   563→
+   564→  const handleStartSession = async (useVenueFallback = false) => {
+   565→    setStarting(true);
+   566→    try {
+   567→      let body: Record<string, unknown>;
+   568→
+   569→      if (useVenueFallback) {
+   570→        // Use venue coordinates when GPS is unavailable
+   571→        body = {
+   572→          sessionId: session.id,
+   573→          useVenueLocation: true,
+   574→        };
+   575→      } else {
+   576→        try {
+   577→          const pos = await getCurrentPosition();
+   578→          body = {
+   579→            sessionId: session.id,
+   580→            lecturerLat: pos.latitude,
+   581→            lecturerLng: pos.longitude,
+   582→          };
+   583→        } catch {
+   584→          // GPS failed — automatically fall back to venue location
+   585→          body = {
+   586→            sessionId: session.id,
+   587→            useVenueLocation: true,
+   588→          };
+   589→        }
+   590→      }
+   591→
+   592→      const res = await fetch('/api/lecturer/start-session', {
+   593→        method: 'POST',
+   594→        headers: { 'Content-Type': 'application/json' },
+   595→        body: JSON.stringify(body),
+   596→      });
+   597→      const json = await res.json();
+   598→      if (json.success) {
+   599→        const usedVenue = json.data?.usedVenueLocation;
+   600→        toast.success(
+   601→          usedVenue
+   602→            ? 'Session started (using venue location — GPS unavailable)'
+   603→            : 'Session started successfully'
+   604→        );
+   605→        onRefresh();
+   606→      } else {
+   607→        toast.error(json.error || 'Failed to start session');
+   608→      }
+   609→    } catch (err) {
+   610→      if (err instanceof Error) {
+   611→        toast.error(err.message);
+   612→      } else {
+   613→        toast.error('Failed to start session');
+   614→      }
+   615→    } finally {
+   616→      setStarting(false);
+   617→    }
+   618→  };
+   619→
+   620→  const handleEndSession = async () => {
+   621→    setEnding(true);
+   622→    try {
+   623→      const res = await fetch('/api/lecturer/end-session', {
+   624→        method: 'POST',
+   625→        headers: { 'Content-Type': 'application/json' },
+   626→        body: JSON.stringify({ sessionId: session.id }),
+   627→      });
+   628→      const json = await res.json();
+   629→      if (json.success) {
+   630→        toast.success(`Session ended. ${json.data?.absentStudentsCreated || 0} absent records created.`);
+   631→        onRefresh();
+   632→      } else {
+   633→        toast.error(json.error || 'Failed to end session');
+   634→      }
+   635→    } catch {
+   636→      toast.error('Network error ending session');
+   637→    } finally {
+   638→      setEnding(false);
+   639→    }
+   640→  };
+   641→
+   642→  const isActive = session.status === 'active';
+   643→
+   644→  return (
+   645→    <Card
+   646→      className={`card-elevated transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-0.5 ${
+   647→        isActive
+   648→          ? 'border-l-4 border-l-emerald-500 border-emerald-200 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/10'
+   649→          : 'hover:border-blue-200 dark:hover:border-blue-800'
+   650→      }`}
+   651→    >
+   652→      <CardContent className="p-4 space-y-3">
+   653→        {/* Header row */}
+   654→        <div className="flex items-start justify-between gap-2">
+   655→          <div className="flex-1 min-w-0">
+   656→            <h3 className="font-semibold truncate">{session.title}</h3>
+   657→            <p className="text-sm text-muted-foreground">
+   658→              {session.courseCode} - {session.courseName}
+   659→            </p>
+   660→          </div>
+   661→          <SessionStatusBadge status={session.status} />
+   662→        </div>
+   663→
+   664→        {/* Details */}
+   665→        <div className="grid grid-cols-2 gap-2 text-sm">
+   666→          <div className="flex items-center gap-1.5 text-muted-foreground">
+   667→            <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+   668→            <span className="truncate">{session.venueName}</span>
+   669→          </div>
+   670→          <div className="flex items-center gap-1.5 text-muted-foreground">
+   671→            <Clock className="h-3.5 w-3.5 flex-shrink-0" />
+   672→            <span>{format(new Date(session.scheduledAt), 'PPp')}</span>
+   673→          </div>
+   674→          <div className="flex items-center gap-1.5 text-muted-foreground">
+   675→            <Users className="h-3.5 w-3.5 flex-shrink-0" />
+   676→            <span>{session.durationMinutes} min &middot; {session.distanceThreshold}m radius</span>
+   677→          </div>
+   678→          <div className="text-muted-foreground">
+   679→            Level {session.level}
+   680→          </div>
+   681→        </div>
+   682→
+   683→        {/* Departments */}
+   684→        <div className="flex flex-wrap gap-1">
+   685→          {session.departments.map((d) => (
+   686→            <Badge key={d.id} variant="outline" className="text-xs bg-blue-50/50 dark:bg-blue-950/20 border-blue-200/50 dark:border-blue-800/30">
+   687→              {d.name}
+   688→            </Badge>
+   689→          ))}
+   690→        </div>
+   691→
+   692→        <Separator />
+   693→
+   694→        {/* Attendance count & actions */}
+   695→        <div className="flex items-center justify-between flex-wrap gap-2">
+   696→          <div className="text-sm text-muted-foreground">
+   697→            Attendance: <span className="font-medium text-foreground">{session.attendanceCount || 0}</span>
+   698→            {session.totalTargetStudents ? ` / ${session.totalTargetStudents}` : ''}
+   699→          </div>
+   700→          <div className="flex items-center gap-2">
+   701→            {session.status === 'scheduled' && (
+   702→              <div className="flex items-center gap-1.5">
+   703→                <Button
+   704→                  size="sm"
+   705→                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   706→                  onClick={() => handleStartSession(false)}
+   707→                  disabled={starting}
+   708→                  title="Start with GPS location"
+   709→                >
+   710→                  {starting ? (
+   711→                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+   712→                  ) : (
+   713→                    <Play className="mr-1 h-3.5 w-3.5" />
+   714→                  )}
+   715→                  Start
+   716→                </Button>
+   717→                <Button
+   718→                  size="sm"
+   719→                  variant="outline"
+   720→                  onClick={() => handleStartSession(true)}
+   721→                  disabled={starting}
+   722→                  title="Start using venue location (for demo/sandbox)"
+   723→                  className="text-xs"
+   724→                >
+   725→                  <MapPin className="mr-1 h-3 w-3" />
+   726→                  Venue
+   727→                </Button>
+   728→              </div>
+   729→            )}
+   730→            {session.status === 'active' && (
+   731→              <>
+   732→                <Button
+   733→                  size="sm"
+   734→                  variant="outline"
+   735→                  onClick={() => setShowLiveMonitor(!showLiveMonitor)}
+   736→                >
+   737→                  <Eye className="mr-1 h-3.5 w-3.5" />
+   738→                  {showLiveMonitor ? 'Hide' : 'Monitor'}
+   739→                </Button>
+   740→                <Button
+   741→                  size="sm"
+   742→                  variant="destructive"
+   743→                  onClick={handleEndSession}
+   744→                  disabled={ending}
+   745→                >
+   746→                  {ending ? (
+   747→                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+   748→                  ) : (
+   749→                    <Square className="mr-1 h-3.5 w-3.5" />
+   750→                  )}
+   751→                  End
+   752→                </Button>
+   753→              </>
+   754→            )}
+   755→            {session.status === 'completed' && (
+   756→              <Button
+   757→                size="sm"
+   758→                variant="outline"
+   759→                onClick={() => onViewAnalytics(session.id)}
+   760→              >
+   761→                <BarChart3 className="mr-1 h-3.5 w-3.5" />
+   762→                Analytics
+   763→              </Button>
+   764→            )}
+   765→          </div>
+   766→        </div>
+   767→
+   768→        {/* Live Monitor */}
+   769→        {showLiveMonitor && session.status === 'active' && (
+   770→          <LiveMonitor session={session} />
+   771→        )}
+   772→      </CardContent>
+   773→    </Card>
+   774→  );
+   775→}
+   776→
+   777→// ============================================================
+   778→// Review Queue Tab
+   779→// ============================================================
+   780→interface ReviewQueueTabProps {
+   781→  lecturerId: string;
+   782→}
+   783→
+   784→function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
+   785→  const [queue, setQueue] = useState<
+   786→    {
+   787→      id: string;
+   788→      studentName: string;
+   789→      matricNumber: string;
+   790→      departmentName: string;
+   791→      sessionTitle: string;
+   792→      courseName: string;
+   793→      venueName: string;
+   794→      similarityScore: number | null;
+   795→      checkInTime: string | null;
+   796→      selfieData: string | null;
+   797→    }[]
+   798→  >([]);
+   799→  const [loading, setLoading] = useState(true);
+   800→  const [actioning, setActioning] = useState<string | null>(null);
+   801→
+   802→  const fetchQueue = useCallback(async () => {
+   803→    try {
+   804→      const res = await fetch(`/api/lecturer/review-queue?lecturerId=${lecturerId}`);
+   805→      const json = await res.json();
+   806→      if (json.success) {
+   807→        setQueue(json.data || []);
+   808→      }
+   809→    } catch {
+   810→      // Silent fail on polling
+   811→    } finally {
+   812→      setLoading(false);
+   813→    }
+   814→  }, [lecturerId]);
+   815→
+   816→  useEffect(() => {
+   817→    fetchQueue();
+   818→    const interval = setInterval(fetchQueue, ATTENDANCE_POLL_INTERVAL);
+   819→    return () => clearInterval(interval);
+   820→  }, [fetchQueue]);
+   821→
+   822→  const handleAction = async (attendanceId: string, action: 'approve' | 'reject') => {
+   823→    setActioning(attendanceId);
+   824→    try {
+   825→      const res = await fetch('/api/lecturer/review-action', {
+   826→        method: 'POST',
+   827→        headers: { 'Content-Type': 'application/json' },
+   828→        body: JSON.stringify({ attendanceId, action }),
+   829→      });
+   830→      const json = await res.json();
+   831→      if (json.success) {
+   832→        toast.success(action === 'approve' ? 'Student approved' : 'Student rejected');
+   833→        fetchQueue();
+   834→      } else {
+   835→        toast.error(json.error || 'Failed to process action');
+   836→      }
+   837→    } catch {
+   838→      toast.error('Network error');
+   839→    } finally {
+   840→      setActioning(null);
+   841→    }
+   842→  };
+   843→
+   844→  if (loading) {
+   845→    return (
+   846→      <div className="space-y-3 p-4">
+   847→        {Array.from({ length: 3 }).map((_, i) => (
+   848→          <Skeleton key={i} className="h-24" />
+   849→        ))}
+   850→      </div>
+   851→    );
+   852→  }
+   853→
+   854→  return (
+   855→    <div className="space-y-4 p-4 md:p-6">
+   856→      <div className="flex items-center justify-between">
+   857→        <h3 className="text-lg font-semibold flex items-center gap-2">
+   858→          <ClipboardCheck className="h-5 w-5 text-primary" />
+   859→          Pending Reviews
+   860→          {queue.length > 0 && (
+   861→            <Badge variant="secondary" className="bg-amber-500 text-white">
+   862→              {queue.length}
+   863→            </Badge>
+   864→          )}
+   865→        </h3>
+   866→      </div>
+   867→
+   868→      {queue.length === 0 ? (
+   869→        <Card className="card-elevated">
+   870→          <CardContent className="p-8 text-center text-muted-foreground">
+   871→            No pending reviews
+   872→          </CardContent>
+   873→        </Card>
+   874→      ) : (
+   875→        <div className="space-y-3">
+   876→          {queue.map((item) => (
+   877→            <Card key={item.id} className="card-elevated transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-0.5 border-l-4 border-l-amber-400">
+   878→              <CardContent className="p-4">
+   879→                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+   880→                  {/* Selfie thumbnail */}
+   881→                  {item.selfieData && (
+   882→                    <div className="flex-shrink-0">
+   883→                      <img
+   884→                        src={item.selfieData}
+   885→                        alt="Student selfie"
+   886→                        className="w-14 h-14 rounded-lg object-cover border ring-2 ring-blue-100 dark:ring-blue-900/30"
+   887→                      />
+   888→                    </div>
+   889→                  )}
+   890→
+   891→                  {/* Info */}
+   892→                  <div className="flex-1 min-w-0">
+   893→                    <div className="flex items-center gap-2 mb-1">
+   894→                      <span className="font-semibold">{item.studentName}</span>
+   895→                      <Badge variant="outline" className="text-xs bg-blue-50/50 dark:bg-blue-950/20">{item.matricNumber}</Badge>
+   896→                    </div>
+   897→                    <div className="text-sm text-muted-foreground space-y-0.5">
+   898→                      <p>{item.departmentName}</p>
+   899→                      <p>{item.sessionTitle} &middot; {item.courseName}</p>
+   900→                      <p>
+   901→                        {item.checkInTime ? format(new Date(item.checkInTime), 'PPp') : 'No time'}
+   902→                        {item.similarityScore !== null && (
+   903→                          <span className="ml-2 font-medium text-amber-600">
+   904→                            Similarity: {item.similarityScore.toFixed(1)}%
+   905→                          </span>
+   906→                        )}
+   907→                      </p>
+   908→                    </div>
+   909→                  </div>
+   910→
+   911→                  {/* Actions */}
+   912→                  <div className="flex items-center gap-2 flex-shrink-0">
+   913→                    <Button
+   914→                      size="sm"
+   915→                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   916→                      onClick={() => handleAction(item.id, 'approve')}
+   917→                      disabled={actioning === item.id}
+   918→                    >
+   919→                      {actioning === item.id ? (
+   920→                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   921→                      ) : (
+   922→                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+   923→                      )}
+   924→                      Approve
+   925→                    </Button>
+   926→                    <Button
+   927→                      size="sm"
+   928→                      variant="destructive"
+   929→                      onClick={() => handleAction(item.id, 'reject')}
+   930→                      disabled={actioning === item.id}
+   931→                    >
+   932→                      {actioning === item.id ? (
+   933→                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   934→                      ) : (
+   935→                        <XCircle className="mr-1 h-3.5 w-3.5" />
+   936→                      )}
+   937→                      Reject
+   938→                    </Button>
+   939→                  </div>
+   940→                </div>
+   941→              </CardContent>
+   942→            </Card>
+   943→          ))}
+   944→        </div>
+   945→      )}
+   946→    </div>
+   947→  );
+   948→}
+   949→
+   950→// ============================================================
+   951→// Main Lecturer Portal
+   952→// ============================================================
+   953→export function LecturerPortal() {
+   954→  const { user, logout } = useAuthStore();
+   955→  const geo = useGeoLocation();
+   956→  const [profileOpen, setProfileOpen] = useState(false);
+   957→  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+   958→  const [courses, setCourses] = useState<CourseInfo[]>([]);
+   959→  const [loadingSessions, setLoadingSessions] = useState(true);
+   960→  const [loadingCourses, setLoadingCourses] = useState(true);
+   961→  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+   962→  const [analyticsSessionId, setAnalyticsSessionId] = useState<string | null>(null);
+   963→  const [activeTab, setActiveTab] = useState('sessions');
+   964→  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   965→  const [lecturerStats, setLecturerStats] = useState<{
+   966→    totalSessions: number;
+   967→    activeSessions: number;
+   968→    completedSessions: number;
+   969→    scheduledSessions: number;
+   970→    totalCourses: number;
+   971→    totalPresent: number;
+   972→    totalAbsent: number;
+   973→    totalPending: number;
+   974→    totalRejected: number;
+   975→    totalCheckIns: number;
+   976→  } | null>(null);
+   977→  const [loadingStats, setLoadingStats] = useState(true);
+   978→
+   979→  const lecturerId = user?.id || '';
+   980→
+   981→  // Fetch lecturer stats
+   982→  const fetchStats = useCallback(async () => {
+   983→    if (!lecturerId) return;
+   984→    try {
+   985→      const res = await fetch(`/api/lecturer/stats?lecturerId=${lecturerId}`);
+   986→      const json = await res.json();
+   987→      if (json.success && json.data) {
+   988→        setLecturerStats(json.data);
+   989→      }
+   990→    } catch {
+   991→      // Silent fail
+   992→    } finally {
+   993→      setLoadingStats(false);
+   994→    }
+   995→  }, [lecturerId]);
+   996→
+   997→  // Fetch lecturer's assigned courses independently
+   998→  const fetchCourses = useCallback(async () => {
+   999→    if (!lecturerId) return;
+  1000→    setLoadingCourses(true);
+  1001→    try {
+  1002→      const res = await fetch(`/api/lecturer/courses?lecturerId=${lecturerId}`);
+  1003→      const json: ApiResponse<CourseInfo[]> = await res.json();
+  1004→      if (json.success && json.data) {
+  1005→        setCourses(json.data);
+  1006→      }
+  1007→    } catch {
+  1008→      // Silent fail
+  1009→    } finally {
+  1010→      setLoadingCourses(false);
+  1011→    }
+  1012→  }, [lecturerId]);
+  1013→
+  1014→  // Fetch sessions
+  1015→  const fetchSessions = useCallback(async () => {
+  1016→    if (!lecturerId) return;
+  1017→    try {
+  1018→      const res = await fetch(`/api/lecturer/sessions?lecturerId=${lecturerId}`);
+  1019→      const json: ApiResponse<SessionInfo[]> = await res.json();
+  1020→      if (json.success && json.data) {
+  1021→        setSessions(json.data);
+  1022→      }
+  1023→    } catch {
+  1024→      // silent
+  1025→    } finally {
+  1026→      setLoadingSessions(false);
+  1027→    }
+  1028→  }, [lecturerId]);
+  1029→
+  1030→  useEffect(() => {
+  1031→    fetchCourses();
+  1032→    fetchSessions();
+  1033→    fetchStats();
+  1034→  }, [fetchCourses, fetchSessions, fetchStats]);
+  1035→
+  1036→  // Poll when there's an active session
+  1037→  useEffect(() => {
+  1038→    const hasActive = sessions.some((s) => s.status === 'active');
+  1039→    if (hasActive) {
+  1040→      intervalRef.current = setInterval(fetchSessions, SESSION_POLL_INTERVAL);
+  1041→      // Also refresh stats when polling
+  1042→      const statsInterval = setInterval(fetchStats, SESSION_POLL_INTERVAL);
+  1043→      return () => {
+  1044→        if (intervalRef.current) clearInterval(intervalRef.current);
+  1045→        clearInterval(statsInterval);
+  1046→      };
+  1047→    }
+  1048→    return () => {
+  1049→      if (intervalRef.current) clearInterval(intervalRef.current);
+  1050→    };
+  1051→  }, [sessions, fetchSessions, fetchStats]);
+  1052→
+  1053→  const handleLogout = useCallback(() => {
+  1054→    logout();
+  1055→    toast.info('Logged out successfully');
+  1056→  }, [logout]);
+  1057→
+  1058→  // Analytics view
+  1059→  if (analyticsSessionId) {
+  1060→    return (
+  1061→      <AnalyticsPanel
+  1062→        sessionId={analyticsSessionId}
+  1063→        onBack={() => setAnalyticsSessionId(null)}
+  1064→      />
+  1065→    );
+  1066→  }
+  1067→
+  1068→  return (
+  1069→    <div className="min-h-screen flex flex-col bg-page-gradient">
+  1070→      {/* Header */}
+  1071→      <header className="header-gradient sticky top-0 z-50">
+  1072→        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+  1073→          <div className="flex items-center gap-3">
+  1074→            <div className="flex items-center gap-2">
+  1075→              <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
+  1076→                <ClipboardCheck className="h-4 w-4 text-white" />
+  1077→              </div>
+  1078→              <h1 className="text-lg font-bold text-white">checkIn</h1>
+  1079→            </div>
+  1080→            <Separator orientation="vertical" className="h-6 bg-white/20" />
+  1081→            <Badge className="bg-white/20 text-white border-white/30 text-[10px] px-1.5 py-0 hover:bg-white/30">{SCHOOL}</Badge>
+  1082→            <span className="text-sm text-white/70">Lecturer Portal</span>
+  1083→          </div>
+  1084→          <div className="flex items-center gap-2">
+  1085→            <Button
+  1086→              variant="ghost"
+  1087→              size="sm"
+  1088→              onClick={() => setProfileOpen(true)}
+  1089→              className="text-white/80 hover:text-white hover:bg-white/10 gap-1.5"
+  1090→            >
+  1091→              <UserCircle className="h-4 w-4" />
+  1092→              <span className="hidden sm:inline">{user?.name}</span>
+  1093→              {user?.departmentName && (
+  1094→                <Badge variant="outline" className="text-[10px] border-white/30 text-white/80 bg-white/10">
+  1095→                  {user.departmentName}
+  1096→                </Badge>
+  1097→              )}
+  1098→            </Button>
+  1099→            <Button
+  1100→              variant="ghost"
+  1101→              size="icon"
+  1102→              onClick={handleLogout}
+  1103→              className="h-9 w-9 text-white/80 hover:text-red-200 hover:bg-white/10"
+  1104→              title="Log out"
+  1105→            >
+  1106→              <LogOut className="h-4 w-4" />
+  1107→            </Button>
+  1108→          </div>
+  1109→        </div>
+  1110→      </header>
+  1111→
+  1112→      {/* Course Assignment Notice */}
+  1113→      {courses.length === 0 && !loadingCourses && (
+  1114→        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 px-4 py-3">
+  1115→          <div className="max-w-7xl mx-auto flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
+  1116→            <ClipboardCheck className="h-4 w-4 shrink-0" />
+  1117→            <span>No courses assigned yet. Ask the admin to assign courses to your account before creating sessions.</span>
+  1118→          </div>
+  1119→        </div>
+  1120→      )}
+  1121→
+  1122→      {/* Stats Overview Section */}
+  1123→      {!loadingStats && lecturerStats && (
+  1124→        <div className="px-4 pt-4 md:px-6 md:pt-6">
+  1125→          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+  1126→            {/* Total Sessions */}
+  1127→            <Card className="card-elevated">
+  1128→              <CardContent className="p-4">
+  1129→                <div className="flex items-center gap-3">
+  1130→                  <div className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/30">
+  1131→                    <ClipboardList className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+  1132→                  </div>
+  1133→                  <div>
+  1134→                    <p className="text-2xl font-bold">{lecturerStats.totalSessions}</p>
+  1135→                    <p className="text-xs text-muted-foreground">Total Sessions</p>
+  1136→                  </div>
+  1137→                </div>
+  1138→              </CardContent>
+  1139→            </Card>
+  1140→
+  1141→            {/* Active Sessions */}
+  1142→            <Card className="card-elevated">
+  1143→              <CardContent className="p-4">
+  1144→                <div className="flex items-center gap-3">
+  1145→                  <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+  1146→                    <Activity className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+  1147→                  </div>
+  1148→                  <div>
+  1149→                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{lecturerStats.activeSessions}</p>
+  1150→                    <p className="text-xs text-muted-foreground">Active Sessions</p>
+  1151→                  </div>
+  1152→                </div>
+  1153→              </CardContent>
+  1154→            </Card>
+  1155→
+  1156→            {/* Courses */}
+  1157→            <Card className="card-elevated">
+  1158→              <CardContent className="p-4">
+  1159→                <div className="flex items-center gap-3">
+  1160→                  <div className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/30">
+  1161→                    <BookOpen className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+  1162→                  </div>
+  1163→                  <div>
+  1164→                    <p className="text-2xl font-bold">{lecturerStats.totalCourses}</p>
+  1165→                    <p className="text-xs text-muted-foreground">Courses</p>
+  1166→                  </div>
+  1167→                </div>
+  1168→              </CardContent>
+  1169→            </Card>
+  1170→
+  1171→            {/* Total Check-ins */}
+  1172→            <Card className="card-elevated">
+  1173→              <CardContent className="p-4">
+  1174→                <div className="flex items-center gap-3">
+  1175→                  <div className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/30">
+  1176→                    <Users className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+  1177→                  </div>
+  1178→                  <div>
+  1179→                    <p className="text-2xl font-bold">{lecturerStats.totalCheckIns}</p>
+  1180→                    <p className="text-xs text-muted-foreground">Total Check-ins</p>
+  1181→                  </div>
+  1182→                </div>
+  1183→              </CardContent>
+  1184→            </Card>
+  1185→
+  1186→            {/* Attendance Rate */}
+  1187→            <Card className="card-elevated col-span-2 md:col-span-1">
+  1188→              <CardContent className="p-4">
+  1189→                <div className="flex items-center gap-3">
+  1190→                  <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+  1191→                    <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+  1192→                  </div>
+  1193→                  <div>
+  1194→                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+  1195→                      {lecturerStats.totalCheckIns > 0
+  1196→                        ? `${Math.round((lecturerStats.totalPresent / lecturerStats.totalCheckIns) * 100)}%`
+  1197→                        : '0%'}
+  1198→                    </p>
+  1199→                    <p className="text-xs text-muted-foreground">Attendance Rate</p>
+  1200→                  </div>
+  1201→                </div>
+  1202→              </CardContent>
+  1203→            </Card>
+  1204→          </div>
+  1205→
+  1206→          {/* Session Status Distribution */}
+  1207→          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+  1208→            <div className="flex items-center gap-2">
+  1209→              {(() => {
+  1210→                const chartData = [
+  1211→                  { name: 'Scheduled', value: lecturerStats.scheduledSessions, color: '#f59e0b' },
+  1212→                  { name: 'Active', value: lecturerStats.activeSessions, color: '#10b981' },
+  1213→                  { name: 'Completed', value: lecturerStats.completedSessions, color: '#6b7280' },
+  1214→                ].filter((d) => d.value > 0);
+  1215→
+  1216→                if (chartData.length === 0) {
+  1217→                  return (
+  1218→                    <div className="text-sm text-muted-foreground">
+  1219→                      No sessions yet
+  1220→                    </div>
+  1221→                  );
+  1222→                }
+  1223→
+  1224→                return (
+  1225→                  <div className="flex items-center gap-3">
+  1226→                    <PieChart width={48} height={48}>
+  1227→                      <Pie
+  1228→                        data={chartData}
+  1229→                        cx={24}
+  1230→                        cy={24}
+  1231→                        innerRadius={12}
+  1232→                        outerRadius={22}
+  1233→                        paddingAngle={2}
+  1234→                        dataKey="value"
+  1235→                        stroke="none"
+  1236→                      >
+  1237→                        {chartData.map((entry, index) => (
+  1238→                          <Cell key={`cell-${index}`} fill={entry.color} />
+  1239→                        ))}
+  1240→                      </Pie>
+  1241→                    </PieChart>
+  1242→                    <div className="flex flex-wrap items-center gap-2">
+  1243→                      <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30">
+  1244→                        Scheduled: {lecturerStats.scheduledSessions}
+  1245→                      </Badge>
+  1246→                      <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30">
+  1247→                        Active: {lecturerStats.activeSessions}
+  1248→                      </Badge>
+  1249→                      <Badge variant="outline" className="border-gray-300 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-950/30">
+  1250→                        Completed: {lecturerStats.completedSessions}
+  1251→                      </Badge>
+  1252→                    </div>
+  1253→                  </div>
+  1254→                );
+  1255→              })()}
+  1256→            </div>
+  1257→          </div>
+  1258→        </div>
+  1259→      )}
+  1260→
+  1261→      {/* Main Content */}
+  1262→      <main className="flex-1 max-w-7xl mx-auto w-full">
+  1263→        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
+  1264→          <div className="border-b bg-card/80 backdrop-blur-sm sticky top-[52px] z-40">
+  1265→            <div className="max-w-7xl mx-auto px-4">
+  1266→              <TabsList className="h-12 bg-transparent p-0 gap-0">
+  1267→                <TabsTrigger
+  1268→                  value="sessions"
+  1269→                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
+  1270→                >
+  1271→                  Sessions
+  1272→                </TabsTrigger>
+  1273→                <TabsTrigger
+  1274→                  value="review"
+  1275→                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
+  1276→                >
+  1277→                  Review Queue
+  1278→                </TabsTrigger>
+  1279→                <TabsTrigger
+  1280→                  value="analytics"
+  1281→                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
+  1282→                >
+  1283→                  Analytics
+  1284→                </TabsTrigger>
+  1285→                <TabsTrigger
+  1286→                  value="grading"
+  1287→                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
+  1288→                >
+  1289→                  Grading
+  1290→                </TabsTrigger>
+  1291→                <TabsTrigger
+  1292→                  value="export"
+  1293→                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 h-12 text-muted-foreground hover:text-foreground transition-colors"
+  1294→                >
+  1295→                  Export
+  1296→                </TabsTrigger>
+  1297→              </TabsList>
+  1298→            </div>
+  1299→          </div>
+  1300→
+  1301→          {/* Sessions Tab */}
+  1302→          <TabsContent value="sessions" className="mt-0">
+  1303→            <div className="p-4 md:p-6">
+  1304→              <div className="flex items-center justify-between mb-6">
+  1305→                <h2 className="text-xl font-bold">My Sessions</h2>
+  1306→                <div className="flex items-center gap-2">
+  1307→                  <Button variant="outline" size="sm" onClick={() => { fetchSessions(); fetchCourses(); }}>
+  1308→                    <RefreshCw className="h-4 w-4" />
+  1309→                  </Button>
+  1310→                  <Button onClick={() => setCreateDialogOpen(true)} disabled={courses.length === 0}>
+  1311→                    <Plus className="mr-2 h-4 w-4" /> Create Session
+  1312→                  </Button>
+  1313→                </div>
+  1314→              </div>
+  1315→
+  1316→              {loadingSessions ? (
+  1317→                <div className="space-y-4">
+  1318→                  {Array.from({ length: 4 }).map((_, i) => (
+  1319→                    <Skeleton key={i} className="h-40" />
+  1320→                  ))}
+  1321→                </div>
+  1322→              ) : sessions.length === 0 ? (
+  1323→                <Card className="card-elevated">
+  1324→                  <CardContent className="p-12 text-center text-muted-foreground">
+  1325→                    <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+  1326→                    <h3 className="text-lg font-medium mb-1">No Sessions Yet</h3>
+  1327→                    <p className="text-sm mb-4">
+  1328→                      {courses.length === 0
+  1329→                        ? 'You need courses assigned first. Ask admin to assign courses.'
+  1330→                        : 'Create your first attendance session to get started.'}
+  1331→                    </p>
+  1332→                    {courses.length > 0 && (
+  1333→                      <Button onClick={() => setCreateDialogOpen(true)}>
+  1334→                        <Plus className="mr-2 h-4 w-4" /> Create Session
+  1335→                      </Button>
+  1336→                    )}
+  1337→                  </CardContent>
+  1338→                </Card>
+  1339→              ) : (
+  1340→                <div className="space-y-4">
+  1341→                  {sessions
+  1342→                    .filter((s) => s.status === 'active')
+  1343→                    .map((s) => (
+  1344→                      <SessionCard key={s.id} session={s} onRefresh={fetchSessions} onViewAnalytics={setAnalyticsSessionId} />
+  1345→                    ))}
+  1346→                  {sessions
+  1347→                    .filter((s) => s.status === 'scheduled')
+  1348→                    .map((s) => (
+  1349→                      <SessionCard key={s.id} session={s} onRefresh={fetchSessions} onViewAnalytics={setAnalyticsSessionId} />
+  1350→                    ))}
+  1351→                  {sessions
+  1352→                    .filter((s) => s.status === 'completed')
+  1353→                    .map((s) => (
+  1354→                      <SessionCard key={s.id} session={s} onRefresh={fetchSessions} onViewAnalytics={setAnalyticsSessionId} />
+  1355→                    ))}
+  1356→                  {sessions
+  1357→                    .filter((s) => s.status === 'cancelled')
+  1358→                    .map((s) => (
+  1359→                      <SessionCard key={s.id} session={s} onRefresh={fetchSessions} onViewAnalytics={setAnalyticsSessionId} />
+  1360→                    ))}
+  1361→                </div>
+  1362→              )}
+  1363→            </div>
+  1364→          </TabsContent>
+  1365→
+  1366→          {/* Review Queue Tab */}
+  1367→          <TabsContent value="review" className="mt-0">
+  1368→            <ReviewQueueTab lecturerId={lecturerId} />
+  1369→          </TabsContent>
+  1370→
+  1371→          {/* Analytics Tab */}
+  1372→          <TabsContent value="analytics" className="mt-0">
+  1373→            <div className="p-4 md:p-6">
+  1374→              <h3 className="text-lg font-semibold mb-4">Session Analytics</h3>
+  1375→              {sessions.filter((s) => s.status === 'completed').length === 0 ? (
+  1376→                <Card className="card-elevated">
+  1377→                  <CardContent className="p-8 text-center text-muted-foreground">
+  1378→                    No completed sessions to analyze
+  1379→                  </CardContent>
+  1380→                </Card>
+  1381→              ) : (
+  1382→                <div className="space-y-3">
+  1383→                  {sessions
+  1384→                    .filter((s) => s.status === 'completed')
+  1385→                    .map((s) => (
+  1386→                      <Card
+  1387→                        key={s.id}
+  1388→                        className="card-elevated cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-0.5 hover:border-blue-200 dark:hover:border-blue-800"
+  1389→                        onClick={() => setAnalyticsSessionId(s.id)}
+  1390→                      >
+  1391→                        <CardContent className="p-4 flex items-center justify-between">
+  1392→                          <div>
+  1393→                            <h4 className="font-medium">{s.title}</h4>
+  1394→                            <p className="text-sm text-muted-foreground">
+  1395→                              {s.courseCode} - {s.courseName} &middot; {format(new Date(s.scheduledAt), 'PP')}
+  1396→                            </p>
+  1397→                          </div>
+  1398→                          <Button size="sm" variant="outline">
+  1399→                            <BarChart3 className="mr-1 h-3.5 w-3.5" /> View
+  1400→                          </Button>
+  1401→                        </CardContent>
+  1402→                      </Card>
+  1403→                    ))}
+  1404→                </div>
+  1405→              )}
+  1406→            </div>
+  1407→          </TabsContent>
+  1408→
+  1409→          {/* Grading Tab */}
+  1410→          <TabsContent value="grading" className="mt-0">
+  1411→            <GradingPanel lecturerId={lecturerId} />
+  1412→          </TabsContent>
+  1413→
+  1414→          {/* Export Tab */}
+  1415→          <TabsContent value="export" className="mt-0">
+  1416→            <ExportPanel lecturerId={lecturerId} />
+  1417→          </TabsContent>
+  1418→        </Tabs>
+  1419→      </main>
+  1420→
+  1421→      {/* Create Session Dialog */}
+  1422→      <CreateSessionDialog
+  1423→        open={createDialogOpen}
+  1424→        onOpenChange={setCreateDialogOpen}
+  1425→        lecturerId={lecturerId}
+  1426→        courses={courses}
+  1427→        onCreated={() => { fetchSessions(); fetchCourses(); }}
+  1428→      />
+  1429→
+  1430→      {/* Profile Panel */}
+  1431→      <ProfilePanel open={profileOpen} onOpenChange={setProfileOpen} />
+  1432→
+  1433→      {/* Footer */}
+  1434→      <footer className="border-t mt-auto bg-secondary/50">
+  1435→        <div className="max-w-7xl mx-auto px-4 py-3 text-center text-xs text-muted-foreground">
+  1436→          checkIn — Student Attendance Platform
+  1437→        </div>
+  1438→      </footer>
+  1439→    </div>
+  1440→  );
+  1441→}
+  1442→

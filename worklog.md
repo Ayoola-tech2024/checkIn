@@ -121,3 +121,46 @@ Stage Summary:
 - Admin account creation removed from UI (pre-created in DB)
 - HOD role supported in schema and API (is_hod, hod_department_id on lecturers)
 - Lint passes clean, dev server running, all APIs verified working
+
+---
+Task ID: 27-32
+Agent: Main Orchestrator
+Task: Add HOD portal, update role hierarchy (Admin creates Faculties/Departments/Students/HODs; HOD creates Lecturers/Courses), update admin dashboard
+
+Work Log:
+- Updated constants.ts: ROLES now includes 'hod' as 4th role, replaced FACE_API_MODEL_URL with MEDIAPIPE_CDN
+- Updated auth login API (/api/auth/login/route.ts): supports 'hod' role, verifies is_hod flag, returns role='hod' for HOD logins
+- Updated page.tsx: added HodPortal import and 'hod' case in role switch
+- Updated login-screen.tsx: added HOD role card (violet theme, Users icon), HOD badge, HOD-specific login hints
+- Created 6 HOD API routes:
+  - /api/hod/profile: GET HOD profile with department info, counts
+  - /api/hod/lecturers: CRUD for lecturers within HOD's department
+  - /api/hod/courses: CRUD for courses within HOD's department
+  - /api/hod/assign: POST assign/unassign lecturer to course
+  - /api/hod/students: GET students in HOD's department with level filter
+  - /api/hod/stats: GET department statistics
+- Created /src/components/checkin/hod-portal.tsx: Full HOD portal with 4 tabs (Overview, Lecturers, Courses, Students), stats cards, Recharts pie chart, CRUD dialogs, level filtering
+- Updated admin-dashboard.tsx via subagent:
+  - Removed Lecturers tab (now managed by HODs)
+  - Removed Courses tab (now managed by HODs)
+  - Added HODs tab with Assign HOD, Edit HOD, Remove HOD Status functionality
+  - Updated Departments tab to show HOD name column
+  - Updated Overview stats: "HODs" count, "Lecturers & Courses" → "Managed by HODs"
+- Browser tested full flow:
+  - Admin login → Dashboard with Students/Departments/HODs/Venues tabs ✓
+  - Admin creates HOD for BIT department ✓
+  - HOD login → Portal with Overview/Lecturers/Courses/Students tabs ✓
+  - HOD creates lecturer (Prof. Chidi Nwosu) ✓
+  - HOD creates course (BIT101) with lecturer assignment ✓
+  - Lecturer login → Portal with Sessions/Review/Analytics/Grading/Export ✓
+- Lint passes clean, all APIs return 200, no errors in dev log
+
+Stage Summary:
+- HOD role fully implemented as 4th user role with dedicated portal
+- Role hierarchy: Admin → creates Faculties, Departments, Students, HODs, Venues
+- HOD → creates Lecturers, Courses, assigns lecturers to courses/levels
+- Lecturer → creates sessions, takes attendance
+- Student → checks in to sessions
+- Admin dashboard no longer has Lecturers/Courses tabs (managed by HODs)
+- HOD portal has full CRUD for lecturers and courses within their department
+- All browser tests pass, no errors

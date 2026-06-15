@@ -1,0 +1,675 @@
+  2159→  };
+  2160→
+  2161→  const handleDeleteCourse = async () => {
+  2162→    if (!deleteCourse) return;
+  2163→    setDeletingCourse(true);
+  2164→
+  2165→    try {
+  2166→      const res = await fetch(`/api/admin/courses?id=${deleteCourse.id}`, {
+  2167→        method: 'DELETE',
+  2168→      });
+  2169→      const data = await res.json();
+  2170→      if (data.success) {
+  2171→        toast.success('Course deleted successfully');
+  2172→        setDeleteCourseOpen(false);
+  2173→        fetchCourses();
+  2174→        fetchStats();
+  2175→      } else {
+  2176→        toast.error(data.error || 'Failed to delete course');
+  2177→      }
+  2178→    } catch {
+  2179→      toast.error('Network error');
+  2180→    } finally {
+  2181→      setDeletingCourse(false);
+  2182→    }
+  2183→  };
+  2184→
+  2185→  return (
+  2186→    <div className="space-y-6">
+  2187→      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
+  2188→        <CardHeader>
+  2189→          <div className="flex items-center justify-between">
+  2190→            <div>
+  2191→              <CardTitle className="flex items-center gap-2 text-base">
+  2192→                <BookOpen className="size-5" />
+  2193→                Courses
+  2194→              </CardTitle>
+  2195→              <CardDescription>
+  2196→                {courses.length} course{courses.length !== 1 ? 's' : ''}
+  2197→              </CardDescription>
+  2198→            </div>
+  2199→            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+  2200→              <DialogTrigger asChild>
+  2201→                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
+  2202→                  <Plus className="size-4" />
+  2203→                  Add Course
+  2204→                </Button>
+  2205→              </DialogTrigger>
+  2206→              <DialogContent className="sm:max-w-lg">
+  2207→                <DialogHeader>
+  2208→                  <DialogTitle>Create Course</DialogTitle>
+  2209→                  <DialogDescription>
+  2210→                    Add a new course and assign it to a lecturer and departments
+  2211→                  </DialogDescription>
+  2212→                </DialogHeader>
+  2213→                <form onSubmit={handleCreate} className="space-y-4">
+  2214→                  <div className="grid grid-cols-2 gap-4">
+  2215→                    <div className="space-y-2">
+  2216→                      <Label htmlFor="course-name">Course Name</Label>
+  2217→                      <Input
+  2218→                        id="course-name"
+  2219→                        placeholder="e.g. Data Structures"
+  2220→                        value={name}
+  2221→                        onChange={(e) => setName(e.target.value)}
+  2222→                        required
+  2223→                        autoFocus
+  2224→                      />
+  2225→                    </div>
+  2226→                    <div className="space-y-2">
+  2227→                      <Label htmlFor="course-code">Course Code</Label>
+  2228→                      <Input
+  2229→                        id="course-code"
+  2230→                        placeholder="e.g. CSC201"
+  2231→                        value={code}
+  2232→                        onChange={(e) => setCode(e.target.value.toUpperCase())}
+  2233→                        required
+  2234→                        className="uppercase"
+  2235→                      />
+  2236→                    </div>
+  2237→                  </div>
+  2238→                  <div className="grid grid-cols-2 gap-4">
+  2239→                    <div className="space-y-2">
+  2240→                      <Label htmlFor="course-level">Level</Label>
+  2241→                      <Select value={level} onValueChange={setLevel}>
+  2242→                        <SelectTrigger id="course-level" className="w-full">
+  2243→                          <SelectValue placeholder="Select level" />
+  2244→                        </SelectTrigger>
+  2245→                        <SelectContent>
+  2246→                          {VALID_LEVELS.map((l) => (
+  2247→                            <SelectItem key={String(l)} value={String(l)}>
+  2248→                              {l} Level
+  2249→                            </SelectItem>
+  2250→                          ))}
+  2251→                        </SelectContent>
+  2252→                      </Select>
+  2253→                    </div>
+  2254→                    <div className="space-y-2">
+  2255→                      <Label htmlFor="course-lecturer">Lecturer</Label>
+  2256→                      <Select value={lecturerId} onValueChange={setLecturerId}>
+  2257→                        <SelectTrigger id="course-lecturer" className="w-full">
+  2258→                          <SelectValue placeholder="Select lecturer" />
+  2259→                        </SelectTrigger>
+  2260→                        <SelectContent>
+  2261→                          {lecturers.map((l) => (
+  2262→                            <SelectItem key={l.id} value={l.id}>
+  2263→                              {l.name}
+  2264→                            </SelectItem>
+  2265→                          ))}
+  2266→                        </SelectContent>
+  2267→                      </Select>
+  2268→                    </div>
+  2269→                  </div>
+  2270→                  <div className="space-y-2">
+  2271→                    <Label>Departments</Label>
+  2272→                    <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-2 custom-scrollbar">
+  2273→                      {departments.length === 0 ? (
+  2274→                        <p className="text-sm text-muted-foreground">No departments available. Create one first.</p>
+  2275→                      ) : (
+  2276→                        departments.map((d) => (
+  2277→                          <label
+  2278→                            key={d.id}
+  2279→                            className="flex items-center gap-2 text-sm cursor-pointer hover:bg-primary/5 rounded px-1 py-0.5 transition-colors"
+  2280→                          >
+  2281→                            <Checkbox
+  2282→                              checked={selectedDeptIds.includes(d.id)}
+  2283→                              onCheckedChange={() => toggleDepartment(d.id)}
+  2284→                            />
+  2285→                            <span>{d.name}</span>
+  2286→                            <span className="text-muted-foreground text-xs">({d.code})</span>
+  2287→                          </label>
+  2288→                        ))
+  2289→                      )}
+  2290→                    </div>
+  2291→                    {selectedDeptIds.length > 0 && (
+  2292→                      <p className="text-xs text-muted-foreground">
+  2293→                        {selectedDeptIds.length} department{selectedDeptIds.length !== 1 ? 's' : ''} selected
+  2294→                      </p>
+  2295→                    )}
+  2296→                  </div>
+  2297→                  <DialogFooter>
+  2298→                    <Button
+  2299→                      type="submit"
+  2300→                      disabled={creating || selectedDeptIds.length === 0}
+  2301→                      className="shadow-sm hover:shadow-md transition-shadow"
+  2302→                    >
+  2303→                      {creating && <Loader2 className="size-4 animate-spin" />}
+  2304→                      Create Course
+  2305→                    </Button>
+  2306→                  </DialogFooter>
+  2307→                </form>
+  2308→              </DialogContent>
+  2309→            </Dialog>
+  2310→          </div>
+  2311→        </CardHeader>
+  2312→        <CardContent>
+  2313→          {courses.length === 0 ? (
+  2314→            <div className="text-center py-8 text-muted-foreground">
+  2315→              <BookOpen className="size-10 mx-auto mb-2 opacity-30" />
+  2316→              <p>No courses yet. Add one to get started.</p>
+  2317→            </div>
+  2318→          ) : (
+  2319→            <div className="border rounded-lg overflow-hidden">
+  2320→              <div className="max-h-96 overflow-y-auto custom-scrollbar">
+  2321→                <Table>
+  2322→                  <TableHeader>
+  2323→                    <TableRow className="bg-muted/50">
+  2324→                      <TableHead>Course</TableHead>
+  2325→                      <TableHead>Code</TableHead>
+  2326→                      <TableHead>Level</TableHead>
+  2327→                      <TableHead>Lecturer</TableHead>
+  2328→                      <TableHead>Departments</TableHead>
+  2329→                      <TableHead className="w-12">Actions</TableHead>
+  2330→                    </TableRow>
+  2331→                  </TableHeader>
+  2332→                  <TableBody>
+  2333→                    {courses.map((c, i) => (
+  2334→                      <TableRow
+  2335→                        key={c.id}
+  2336→                        className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+  2337→                      >
+  2338→                        <TableCell className="font-medium">{c.name}</TableCell>
+  2339→                        <TableCell>
+  2340→                          <Badge variant="outline" className="font-mono">
+  2341→                            {c.code}
+  2342→                          </Badge>
+  2343→                        </TableCell>
+  2344→                        <TableCell>{c.level}</TableCell>
+  2345→                        <TableCell>{c.lecturerName}</TableCell>
+  2346→                        <TableCell>
+  2347→                          <div className="flex flex-wrap gap-1">
+  2348→                            {c.departments.map((d) => (
+  2349→                              <Badge key={d.id} variant="secondary" className="text-xs">
+  2350→                                {d.code}
+  2351→                              </Badge>
+  2352→                            ))}
+  2353→                          </div>
+  2354→                        </TableCell>
+  2355→                        <TableCell>
+  2356→                          <RowActions
+  2357→                            onEdit={() => openEditCourse(c)}
+  2358→                            onDelete={() => openDeleteCourse(c)}
+  2359→                          />
+  2360→                        </TableCell>
+  2361→                      </TableRow>
+  2362→                    ))}
+  2363→                  </TableBody>
+  2364→                </Table>
+  2365→              </div>
+  2366→            </div>
+  2367→          )}
+  2368→        </CardContent>
+  2369→      </Card>
+  2370→
+  2371→      {/* Edit Course Dialog */}
+  2372→      <Dialog open={editCourseOpen} onOpenChange={setEditCourseOpen}>
+  2373→        <DialogContent className="sm:max-w-lg">
+  2374→          <DialogHeader>
+  2375→            <DialogTitle>Edit Course</DialogTitle>
+  2376→            <DialogDescription>
+  2377→              Update course information
+  2378→            </DialogDescription>
+  2379→          </DialogHeader>
+  2380→          <form onSubmit={handleEditCourse} className="space-y-4">
+  2381→            <div className="grid grid-cols-2 gap-4">
+  2382→              <div className="space-y-2">
+  2383→                <Label htmlFor="edit-course-name">Course Name</Label>
+  2384→                <Input
+  2385→                  id="edit-course-name"
+  2386→                  value={editCourseName}
+  2387→                  onChange={(e) => setEditCourseName(e.target.value)}
+  2388→                  required
+  2389→                  autoFocus
+  2390→                />
+  2391→              </div>
+  2392→              <div className="space-y-2">
+  2393→                <Label htmlFor="edit-course-code">Course Code</Label>
+  2394→                <Input
+  2395→                  id="edit-course-code"
+  2396→                  value={editCourseCode}
+  2397→                  onChange={(e) => setEditCourseCode(e.target.value.toUpperCase())}
+  2398→                  required
+  2399→                  className="uppercase"
+  2400→                />
+  2401→              </div>
+  2402→            </div>
+  2403→            <div className="grid grid-cols-2 gap-4">
+  2404→              <div className="space-y-2">
+  2405→                <Label htmlFor="edit-course-level">Level</Label>
+  2406→                <Select value={editCourseLevel} onValueChange={setEditCourseLevel}>
+  2407→                  <SelectTrigger id="edit-course-level" className="w-full">
+  2408→                    <SelectValue placeholder="Select level" />
+  2409→                  </SelectTrigger>
+  2410→                  <SelectContent>
+  2411→                    {VALID_LEVELS.map((l) => (
+  2412→                      <SelectItem key={String(l)} value={String(l)}>
+  2413→                        {l} Level
+  2414→                      </SelectItem>
+  2415→                    ))}
+  2416→                  </SelectContent>
+  2417→                </Select>
+  2418→              </div>
+  2419→              <div className="space-y-2">
+  2420→                <Label htmlFor="edit-course-lecturer">Lecturer</Label>
+  2421→                <Select value={editCourseLecturerId} onValueChange={setEditCourseLecturerId}>
+  2422→                  <SelectTrigger id="edit-course-lecturer" className="w-full">
+  2423→                    <SelectValue placeholder="Select lecturer" />
+  2424→                  </SelectTrigger>
+  2425→                  <SelectContent>
+  2426→                    {lecturers.map((l) => (
+  2427→                      <SelectItem key={l.id} value={l.id}>
+  2428→                        {l.name}
+  2429→                      </SelectItem>
+  2430→                    ))}
+  2431→                  </SelectContent>
+  2432→                </Select>
+  2433→              </div>
+  2434→            </div>
+  2435→            <div className="space-y-2">
+  2436→              <Label>Departments</Label>
+  2437→              <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-2 custom-scrollbar">
+  2438→                {departments.map((d) => (
+  2439→                  <label
+  2440→                    key={d.id}
+  2441→                    className="flex items-center gap-2 text-sm cursor-pointer hover:bg-primary/5 rounded px-1 py-0.5 transition-colors"
+  2442→                  >
+  2443→                    <Checkbox
+  2444→                      checked={editCourseDeptIds.includes(d.id)}
+  2445→                      onCheckedChange={() => toggleEditDepartment(d.id)}
+  2446→                    />
+  2447→                    <span>{d.name}</span>
+  2448→                    <span className="text-muted-foreground text-xs">({d.code})</span>
+  2449→                  </label>
+  2450→                ))}
+  2451→              </div>
+  2452→              {editCourseDeptIds.length > 0 && (
+  2453→                <p className="text-xs text-muted-foreground">
+  2454→                  {editCourseDeptIds.length} department{editCourseDeptIds.length !== 1 ? 's' : ''} selected
+  2455→                </p>
+  2456→              )}
+  2457→            </div>
+  2458→            <DialogFooter>
+  2459→              <Button
+  2460→                type="submit"
+  2461→                disabled={savingCourse || editCourseDeptIds.length === 0}
+  2462→                className="shadow-sm hover:shadow-md transition-shadow"
+  2463→              >
+  2464→                {savingCourse && <Loader2 className="size-4 animate-spin" />}
+  2465→                Save Changes
+  2466→              </Button>
+  2467→            </DialogFooter>
+  2468→          </form>
+  2469→        </DialogContent>
+  2470→      </Dialog>
+  2471→
+  2472→      {/* Delete Course Confirmation */}
+  2473→      <AlertDialog open={deleteCourseOpen} onOpenChange={setDeleteCourseOpen}>
+  2474→        <AlertDialogContent>
+  2475→          <AlertDialogHeader>
+  2476→            <AlertDialogTitle>Delete Course</AlertDialogTitle>
+  2477→            <AlertDialogDescription>
+  2478→              Are you sure you want to delete <strong>{deleteCourse?.name}</strong> ({deleteCourse?.code})? This action cannot be undone.
+  2479→            </AlertDialogDescription>
+  2480→          </AlertDialogHeader>
+  2481→          <AlertDialogFooter>
+  2482→            <AlertDialogCancel disabled={deletingCourse}>Cancel</AlertDialogCancel>
+  2483→            <AlertDialogAction
+  2484→              onClick={handleDeleteCourse}
+  2485→              disabled={deletingCourse}
+  2486→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  2487→            >
+  2488→              {deletingCourse && <Loader2 className="size-4 animate-spin mr-2" />}
+  2489→              Delete
+  2490→            </AlertDialogAction>
+  2491→          </AlertDialogFooter>
+  2492→        </AlertDialogContent>
+  2493→      </AlertDialog>
+  2494→    </div>
+  2495→  );
+  2496→}
+  2497→
+  2498→// ============================================================
+  2499→// Venues Tab
+  2500→// ============================================================
+  2501→function VenuesTab({
+  2502→  venues,
+  2503→  fetchVenues,
+  2504→  fetchStats,
+  2505→}: {
+  2506→  venues: VenueInfo[];
+  2507→  fetchVenues: () => Promise<void>;
+  2508→  fetchStats: () => Promise<void>;
+  2509→}) {
+  2510→  const [name, setName] = useState('');
+  2511→  const [latitude, setLatitude] = useState('');
+  2512→  const [longitude, setLongitude] = useState('');
+  2513→  const [creating, setCreating] = useState(false);
+  2514→  const [dialogOpen, setDialogOpen] = useState(false);
+  2515→
+  2516→  // Edit venue state
+  2517→  const [editVenueOpen, setEditVenueOpen] = useState(false);
+  2518→  const [editVenue, setEditVenue] = useState<VenueInfo | null>(null);
+  2519→  const [editVenueName, setEditVenueName] = useState('');
+  2520→  const [editVenueLat, setEditVenueLat] = useState('');
+  2521→  const [editVenueLng, setEditVenueLng] = useState('');
+  2522→  const [savingVenue, setSavingVenue] = useState(false);
+  2523→
+  2524→  // Delete venue state
+  2525→  const [deleteVenueOpen, setDeleteVenueOpen] = useState(false);
+  2526→  const [deleteVenue, setDeleteVenue] = useState<VenueInfo | null>(null);
+  2527→  const [deletingVenue, setDeletingVenue] = useState(false);
+  2528→
+  2529→  const handleCreate = async (e: React.FormEvent) => {
+  2530→    e.preventDefault();
+  2531→    if (!name || !latitude || !longitude) return;
+  2532→    setCreating(true);
+  2533→
+  2534→    try {
+  2535→      const res = await fetch('/api/admin/venues', {
+  2536→        method: 'POST',
+  2537→        headers: { 'Content-Type': 'application/json' },
+  2538→        body: JSON.stringify({
+  2539→          name,
+  2540→          latitude: parseFloat(latitude),
+  2541→          longitude: parseFloat(longitude),
+  2542→        }),
+  2543→      });
+  2544→      const data = await res.json();
+  2545→      if (data.success) {
+  2546→        toast.success('Venue created successfully');
+  2547→        setName('');
+  2548→        setLatitude('');
+  2549→        setLongitude('');
+  2550→        setDialogOpen(false);
+  2551→        fetchVenues();
+  2552→        fetchStats();
+  2553→      } else {
+  2554→        toast.error(data.error || 'Failed to create venue');
+  2555→      }
+  2556→    } catch {
+  2557→      toast.error('Network error');
+  2558→    } finally {
+  2559→      setCreating(false);
+  2560→    }
+  2561→  };
+  2562→
+  2563→  const openEditVenue = (v: VenueInfo) => {
+  2564→    setEditVenue(v);
+  2565→    setEditVenueName(v.name);
+  2566→    setEditVenueLat(String(v.latitude));
+  2567→    setEditVenueLng(String(v.longitude));
+  2568→    setEditVenueOpen(true);
+  2569→  };
+  2570→
+  2571→  const handleEditVenue = async (e: React.FormEvent) => {
+  2572→    e.preventDefault();
+  2573→    if (!editVenue || !editVenueName || !editVenueLat || !editVenueLng) return;
+  2574→    setSavingVenue(true);
+  2575→
+  2576→    try {
+  2577→      const res = await fetch('/api/admin/venues', {
+  2578→        method: 'PUT',
+  2579→        headers: { 'Content-Type': 'application/json' },
+  2580→        body: JSON.stringify({
+  2581→          id: editVenue.id,
+  2582→          name: editVenueName,
+  2583→          latitude: parseFloat(editVenueLat),
+  2584→          longitude: parseFloat(editVenueLng),
+  2585→        }),
+  2586→      });
+  2587→      const data = await res.json();
+  2588→      if (data.success) {
+  2589→        toast.success('Venue updated successfully');
+  2590→        setEditVenueOpen(false);
+  2591→        fetchVenues();
+  2592→        fetchStats();
+  2593→      } else {
+  2594→        toast.error(data.error || 'Failed to update venue');
+  2595→      }
+  2596→    } catch {
+  2597→      toast.error('Network error');
+  2598→    } finally {
+  2599→      setSavingVenue(false);
+  2600→    }
+  2601→  };
+  2602→
+  2603→  const openDeleteVenue = (v: VenueInfo) => {
+  2604→    setDeleteVenue(v);
+  2605→    setDeleteVenueOpen(true);
+  2606→  };
+  2607→
+  2608→  const handleDeleteVenue = async () => {
+  2609→    if (!deleteVenue) return;
+  2610→    setDeletingVenue(true);
+  2611→
+  2612→    try {
+  2613→      const res = await fetch(`/api/admin/venues?id=${deleteVenue.id}`, {
+  2614→        method: 'DELETE',
+  2615→      });
+  2616→      const data = await res.json();
+  2617→      if (data.success) {
+  2618→        toast.success('Venue deleted successfully');
+  2619→        setDeleteVenueOpen(false);
+  2620→        fetchVenues();
+  2621→        fetchStats();
+  2622→      } else {
+  2623→        toast.error(data.error || 'Failed to delete venue');
+  2624→      }
+  2625→    } catch {
+  2626→      toast.error('Network error');
+  2627→    } finally {
+  2628→      setDeletingVenue(false);
+  2629→    }
+  2630→  };
+  2631→
+  2632→  return (
+  2633→    <div className="space-y-6">
+  2634→      <Card className="card-elevated border-l-4 border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-200">
+  2635→        <CardHeader>
+  2636→          <div className="flex items-center justify-between">
+  2637→            <div>
+  2638→              <CardTitle className="flex items-center gap-2 text-base">
+  2639→                <MapPin className="size-5" />
+  2640→                Venues
+  2641→              </CardTitle>
+  2642→              <CardDescription>
+  2643→                {venues.length} venue{venues.length !== 1 ? 's' : ''}
+  2644→              </CardDescription>
+  2645→            </div>
+  2646→            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+  2647→              <DialogTrigger asChild>
+  2648→                <Button size="sm" className="gap-1.5 shadow-sm hover:shadow-md transition-shadow">
+  2649→                  <Plus className="size-4" />
+  2650→                  Add Venue
+  2651→                </Button>
+  2652→              </DialogTrigger>
+  2653→              <DialogContent>
+  2654→                <DialogHeader>
+  2655→                  <DialogTitle>Create Venue</DialogTitle>
+  2656→                  <DialogDescription>
+  2657→                    Add a new venue with its GPS coordinates
+  2658→                  </DialogDescription>
+  2659→                </DialogHeader>
+  2660→                <form onSubmit={handleCreate} className="space-y-4">
+  2661→                  <div className="space-y-2">
+  2662→                    <Label htmlFor="venue-name">Venue Name</Label>
+  2663→                    <Input
+  2664→                      id="venue-name"
+  2665→                      placeholder="e.g. Lecture Hall A"
+  2666→                      value={name}
+  2667→                      onChange={(e) => setName(e.target.value)}
+  2668→                      required
+  2669→                      autoFocus
+  2670→                    />
+  2671→                  </div>
+  2672→                  <div className="grid grid-cols-2 gap-4">
+  2673→                    <div className="space-y-2">
+  2674→                      <Label htmlFor="venue-lat">Latitude</Label>
+  2675→                      <Input
+  2676→                        id="venue-lat"
+  2677→                        type="number"
+  2678→                        step="any"
+  2679→                        placeholder="e.g. 6.5244"
+  2680→                        value={latitude}
+  2681→                        onChange={(e) => setLatitude(e.target.value)}
+  2682→                        required
+  2683→                      />
+  2684→                    </div>
+  2685→                    <div className="space-y-2">
+  2686→                      <Label htmlFor="venue-lng">Longitude</Label>
+  2687→                      <Input
+  2688→                        id="venue-lng"
+  2689→                        type="number"
+  2690→                        step="any"
+  2691→                        placeholder="e.g. 3.3792"
+  2692→                        value={longitude}
+  2693→                        onChange={(e) => setLongitude(e.target.value)}
+  2694→                        required
+  2695→                      />
+  2696→                    </div>
+  2697→                  </div>
+  2698→                  <DialogFooter>
+  2699→                    <Button type="submit" disabled={creating} className="shadow-sm hover:shadow-md transition-shadow">
+  2700→                      {creating && <Loader2 className="size-4 animate-spin" />}
+  2701→                      Create Venue
+  2702→                    </Button>
+  2703→                  </DialogFooter>
+  2704→                </form>
+  2705→              </DialogContent>
+  2706→            </Dialog>
+  2707→          </div>
+  2708→        </CardHeader>
+  2709→        <CardContent>
+  2710→          {venues.length === 0 ? (
+  2711→            <div className="text-center py-8 text-muted-foreground">
+  2712→              <MapPin className="size-10 mx-auto mb-2 opacity-30" />
+  2713→              <p>No venues yet. Add one to get started.</p>
+  2714→            </div>
+  2715→          ) : (
+  2716→            <div className="border rounded-lg overflow-hidden">
+  2717→              <Table>
+  2718→                <TableHeader>
+  2719→                  <TableRow className="bg-muted/50">
+  2720→                    <TableHead>Venue</TableHead>
+  2721→                    <TableHead>Latitude</TableHead>
+  2722→                    <TableHead>Longitude</TableHead>
+  2723→                    <TableHead className="w-12">Actions</TableHead>
+  2724→                  </TableRow>
+  2725→                </TableHeader>
+  2726→                <TableBody>
+  2727→                  {venues.map((v, i) => (
+  2728→                    <TableRow
+  2729→                      key={v.id}
+  2730→                      className={`hover:bg-primary/5 transition-colors ${i % 2 === 1 ? 'bg-primary/[0.02]' : ''}`}
+  2731→                    >
+  2732→                      <TableCell className="font-medium">{v.name}</TableCell>
+  2733→                      <TableCell className="font-mono text-sm">{v.latitude}</TableCell>
+  2734→                      <TableCell className="font-mono text-sm">{v.longitude}</TableCell>
+  2735→                      <TableCell>
+  2736→                        <RowActions
+  2737→                          onEdit={() => openEditVenue(v)}
+  2738→                          onDelete={() => openDeleteVenue(v)}
+  2739→                        />
+  2740→                      </TableCell>
+  2741→                    </TableRow>
+  2742→                  ))}
+  2743→                </TableBody>
+  2744→              </Table>
+  2745→            </div>
+  2746→          )}
+  2747→        </CardContent>
+  2748→      </Card>
+  2749→
+  2750→      {/* Edit Venue Dialog */}
+  2751→      <Dialog open={editVenueOpen} onOpenChange={setEditVenueOpen}>
+  2752→        <DialogContent>
+  2753→          <DialogHeader>
+  2754→            <DialogTitle>Edit Venue</DialogTitle>
+  2755→            <DialogDescription>
+  2756→              Update venue information
+  2757→            </DialogDescription>
+  2758→          </DialogHeader>
+  2759→          <form onSubmit={handleEditVenue} className="space-y-4">
+  2760→            <div className="space-y-2">
+  2761→              <Label htmlFor="edit-venue-name">Venue Name</Label>
+  2762→              <Input
+  2763→                id="edit-venue-name"
+  2764→                value={editVenueName}
+  2765→                onChange={(e) => setEditVenueName(e.target.value)}
+  2766→                required
+  2767→                autoFocus
+  2768→              />
+  2769→            </div>
+  2770→            <div className="grid grid-cols-2 gap-4">
+  2771→              <div className="space-y-2">
+  2772→                <Label htmlFor="edit-venue-lat">Latitude</Label>
+  2773→                <Input
+  2774→                  id="edit-venue-lat"
+  2775→                  type="number"
+  2776→                  step="any"
+  2777→                  value={editVenueLat}
+  2778→                  onChange={(e) => setEditVenueLat(e.target.value)}
+  2779→                  required
+  2780→                />
+  2781→              </div>
+  2782→              <div className="space-y-2">
+  2783→                <Label htmlFor="edit-venue-lng">Longitude</Label>
+  2784→                <Input
+  2785→                  id="edit-venue-lng"
+  2786→                  type="number"
+  2787→                  step="any"
+  2788→                  value={editVenueLng}
+  2789→                  onChange={(e) => setEditVenueLng(e.target.value)}
+  2790→                  required
+  2791→                />
+  2792→              </div>
+  2793→            </div>
+  2794→            <DialogFooter>
+  2795→              <Button
+  2796→                type="submit"
+  2797→                disabled={savingVenue || !editVenueName || !editVenueLat || !editVenueLng}
+  2798→                className="shadow-sm hover:shadow-md transition-shadow"
+  2799→              >
+  2800→                {savingVenue && <Loader2 className="size-4 animate-spin" />}
+  2801→                Save Changes
+  2802→              </Button>
+  2803→            </DialogFooter>
+  2804→          </form>
+  2805→        </DialogContent>
+  2806→      </Dialog>
+  2807→
+  2808→      {/* Delete Venue Confirmation */}
+  2809→      <AlertDialog open={deleteVenueOpen} onOpenChange={setDeleteVenueOpen}>
+  2810→        <AlertDialogContent>
+  2811→          <AlertDialogHeader>
+  2812→            <AlertDialogTitle>Delete Venue</AlertDialogTitle>
+  2813→            <AlertDialogDescription>
+  2814→              Are you sure you want to delete <strong>{deleteVenue?.name}</strong>? This action cannot be undone.
+  2815→            </AlertDialogDescription>
+  2816→          </AlertDialogHeader>
+  2817→          <AlertDialogFooter>
+  2818→            <AlertDialogCancel disabled={deletingVenue}>Cancel</AlertDialogCancel>
+  2819→            <AlertDialogAction
+  2820→              onClick={handleDeleteVenue}
+  2821→              disabled={deletingVenue}
+  2822→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  2823→            >
+  2824→              {deletingVenue && <Loader2 className="size-4 animate-spin mr-2" />}
+  2825→              Delete
+  2826→            </AlertDialogAction>
+  2827→          </AlertDialogFooter>
+  2828→        </AlertDialogContent>
+  2829→      </AlertDialog>
+  2830→    </div>
+  2831→  );
+  2832→}
+  2833→

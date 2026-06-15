@@ -13,9 +13,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['admin', 'lecturer', 'student'].includes(role)) {
+    if (!['admin', 'lecturer', 'student', 'hod'].includes(role)) {
       return NextResponse.json(
-        { success: false, error: 'Invalid role. Must be admin, lecturer, or student' },
+        { success: false, error: 'Invalid role. Must be admin, hod, lecturer, or student' },
         { status: 400 }
       );
     }
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (role === 'lecturer') {
+    if (role === 'lecturer' || role === 'hod') {
       if (!email) {
         return NextResponse.json(
           { success: false, error: 'Email is required' },
@@ -70,6 +70,14 @@ export async function POST(request: NextRequest) {
         );
       }
       const lecturer = lecturers[0] as Record<string, unknown>;
+
+      // If logging in as HOD, verify is_hod
+      if (role === 'hod' && !lecturer.is_hod) {
+        return NextResponse.json(
+          { success: false, error: 'This account is not designated as a Head of Department' },
+          { status: 403 }
+        );
+      }
 
       // Handle password
       if (!lecturer.password_hash) {
@@ -162,13 +170,16 @@ export async function POST(request: NextRequest) {
         hodDepartmentName = (hodDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
       }
 
+      // Determine role for response
+      const responseRole = role === 'hod' ? 'hod' : 'lecturer';
+
       return NextResponse.json({
         success: true,
         data: {
           id: lecturer.id,
           name: lecturer.name,
           email: lecturer.email,
-          role: 'lecturer',
+          role: responseRole,
           schoolId: lecturer.school_id,
           schoolName,
           schoolCode,

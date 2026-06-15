@@ -19,6 +19,7 @@ import {
   Fingerprint,
   LogIn,
   ChevronRight,
+  Users,
 } from 'lucide-react';
 
 type LoginStep = 'select-role' | 'login-form';
@@ -40,7 +41,7 @@ const ROLES: RoleCard[] = [
   {
     role: 'admin',
     title: 'Admin',
-    description: 'Manage students, departments, courses & system settings',
+    description: 'Manage faculties, departments, students & system settings',
     icon: <Shield className="size-7" />,
     color: 'text-rose-600 dark:text-rose-400',
     gradientFrom: 'from-rose-500',
@@ -48,6 +49,18 @@ const ROLES: RoleCard[] = [
     bgLight: 'bg-rose-50',
     bgDark: 'dark:bg-rose-950/30',
     borderHover: 'hover:border-rose-300 dark:hover:border-rose-700',
+  },
+  {
+    role: 'hod',
+    title: 'Head of Department',
+    description: 'Manage lecturers, courses & level assignments in your department',
+    icon: <Users className="size-7" />,
+    color: 'text-violet-600 dark:text-violet-400',
+    gradientFrom: 'from-violet-500',
+    gradientTo: 'to-violet-600',
+    bgLight: 'bg-violet-50',
+    bgDark: 'dark:bg-violet-950/30',
+    borderHover: 'hover:border-violet-300 dark:hover:border-violet-700',
   },
   {
     role: 'lecturer',
@@ -203,6 +216,11 @@ export function LoginScreen() {
                             System
                           </Badge>
                         )}
+                        {r.role === 'hod' && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800">
+                            HOD
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground mt-0.5">
                         {r.description}
@@ -311,11 +329,13 @@ export function LoginScreen() {
                   </div>
                 )}
 
-                {selectedRole === 'lecturer' && (
+                {(selectedRole === 'lecturer' || selectedRole === 'hod') && (
                   <div className="rounded-lg border border-sky-200 dark:border-sky-800/60 bg-sky-50 dark:bg-sky-950/20 p-3">
                     <p className="text-sm text-sky-800 dark:text-sky-200 flex items-start gap-2">
                       <BookOpen className="size-4 mt-0.5 shrink-0" />
-                      Use your email with default password (CheckIn@2024) to log in.
+                      {selectedRole === 'hod'
+                        ? 'Use your HOD email with default password (CheckIn@2024) to log in.'
+                        : 'Use your email with default password (CheckIn@2024) to log in.'}
                     </p>
                   </div>
                 )}
