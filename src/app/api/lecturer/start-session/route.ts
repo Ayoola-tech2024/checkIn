@@ -33,26 +33,27 @@ export async function POST(request: NextRequest) {
     let finalLat: number;
     let finalLng: number;
 
-    if (useVenueLocation || lecturerLat === undefined || lecturerLng === undefined) {
-      // Fallback: use venue coordinates when GPS is unavailable (sandbox/demo)
+    if (lecturerLat !== undefined && lecturerLng !== undefined) {
+      // Use lecturer's real GPS coordinates (required for production)
+      finalLat = parseFloat(lecturerLat);
+      finalLng = parseFloat(lecturerLng);
+    } else {
+      // No GPS provided - try venue coordinates as fallback
       const { data: venues } = await db
         .from('venues')
         .select('latitude, longitude')
         .eq('id', session.venue_id as string);
 
-      if (!venues || venues.length === 0) {
+      if (!venues || venues.length === 0 || !(venues[0] as Record<string, unknown>).latitude) {
         return NextResponse.json(
-          { success: false, error: 'Venue not found for location fallback' },
-          { status: 404 }
+          { success: false, error: 'GPS coordinates are required to start a session. Please enable location services.' },
+          { status: 400 }
         );
       }
 
       const venue = venues[0] as Record<string, unknown>;
       finalLat = venue.latitude as number;
       finalLng = venue.longitude as number;
-    } else {
-      finalLat = parseFloat(lecturerLat);
-      finalLng = parseFloat(lecturerLng);
     }
 
     const now = new Date();
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
         lecturerLng: finalLng,
         courseName: course?.name,
         venueName: venue?.name,
-        usedVenueLocation: useVenueLocation || lecturerLat === undefined,
+        usedVenueLocation: lecturerLat === undefined,
       },
     });
   } catch (error) {
