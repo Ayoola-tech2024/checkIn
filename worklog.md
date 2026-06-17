@@ -32,3 +32,36 @@ Stage Summary:
 - Role-based creation workflow: Admin creates students/faculties/departments/HODs; HOD creates lecturers/courses ✅
 - Database clean, no demo data, no DEMO_MODE bypasses ✅
 - Full production mode - no demo/sandbox features ✅
+
+---
+Task ID: 2
+Agent: Main
+Task: Add dark mode + deploy checkIn to GitHub
+
+Work Log:
+- Verified GitHub token and user (stackdevfuta-cpu)
+- Found existing empty GitHub repo: https://github.com/stackdevfuta-cpu/checkIn
+- Added GitHub remote with token authentication
+- Created ThemeProvider component (next-themes wrapper, attribute="class", defaultTheme="light")
+- Created ThemeToggle component (Sun/Moon icons, hydration-safe with mounted guard)
+- Updated src/app/layout.tsx to wrap app with ThemeProvider
+- Added ThemeToggle to login screen footer
+- Added ThemeToggle to admin dashboard header (next to logout, with white border styling for gradient header)
+- Added ThemeToggle to HOD portal header (next to logout)
+- Added ThemeToggle to lecturer portal header (next to logout, with white border styling)
+- Added ThemeToggle to student portal header (next to logout, with white border styling)
+- Dark mode CSS variables were already defined in globals.css (.dark class)
+- Verified dark mode works via Agent Browser: login page, admin dashboard both toggle correctly
+- Created README.md with full project documentation (features, tech stack, API routes, structure)
+- Added tool-results/ to .gitignore and untracked from git
+- Created vercel.json with Next.js framework config for Vercel deployment
+- Committed all changes and pushed to GitHub
+- Verified push: latest commit fa0859f visible on GitHub
+
+Stage Summary:
+- GitHub repo: https://github.com/stackdevfuta-cpu/checkIn (live, code pushed) ✅
+- Dark mode: Working in all 5 screens (login, admin, hod, lecturer, student) ✅
+- Theme toggle: Sun/Moon icon, persists via next-themes localStorage ✅
+- README.md: Full documentation added ✅
+- vercel.json: Deployment config ready for Vercel dashboard import ✅
+- For Vercel deployment: User needs to import the GitHub repo at vercel.com/new
