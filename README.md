@@ -1,28 +1,28 @@
-# checkIn — Student Attendance Platform
+  checkIn — Student Attendance Platform
 
 A production-grade university attendance system with **biometric face verification** (Google MediaPipe FaceMesh) and **GPS geolocation validation**. Built for the School of Logistics and Innovation Technology (SLIT) at the Federal University of Technology, Akure (FUTA).
 
-## Features
+   Features
 
-### Role-Based Access Control (4 Roles)
+     Role-Based Access Control (4 Roles)
 - **Admin** — Creates students, faculties (schools), departments, and assigns HODs
 - **HOD (Head of Department)** — Creates lecturers and assigns them to courses and levels within their department
 - **Lecturer** — Creates sessions, starts attendance with GPS, reviews pending check-ins, exports data
 - **Student** — Activates account with face capture, checks in to active sessions
 
-### Biometric Verification
+     Biometric Verification
 - **Google MediaPipe FaceMesh** (468 3D landmarks) — replaces face-api.js
 - Three-way similarity routing:
   - **> 50%** → Present (verified)
   - **40–50%** → Pending Review (lecturer approves/rejects)
   - **< 40%** → Rejected (identity fraud)
 
-### GPS Validation
+     GPS Validation
 - **Haversine formula** calculates distance between student and lecturer/venue
 - Configurable distance threshold per session (default: 50m)
 - Real validation — no demo/sandbox bypasses
 
-### University Hierarchy
+     University Hierarchy
 ```
 Faculty (School) → Department → Level (100–500) → Course
                                               → Student
@@ -39,7 +39,7 @@ Faculty (School) → Department → Level (100–500) → Course
 | PRMT | Procurement Management Technology |
 | SIMT | Securities and Investment Management Technology |
 
-## Tech Stack
+   Tech Stack
 
 - **Framework**: Next.js 16 (App Router) + TypeScript 5
 - **Styling**: Tailwind CSS 4 + shadcn/ui (New York) + Lucide icons
@@ -50,75 +50,42 @@ Faculty (School) → Department → Level (100–500) → Course
 - **Biometrics**: MediaPipe FaceMesh
 - **Theming**: next-themes (light/dark mode)
 
-## Getting Started
-
-### Prerequisites
-- Node.js 18+ 
-- Bun (package manager)
-
-### Installation
-
-```bash
-bun install
-```
-
-### Environment Variables
-
-Create a `.env` file:
-
-```env
-DATABASE_URL=file:./local.db
-NEXT_PUBLIC_INSFORGE_URL=https://your-project.insforge.app
-INSFORGE_API_KEY=your_api_key
-```
-
-### Development
-
-```bash
-bun run dev
-```
-
-The app runs on `http://localhost:3000`.
-
-### Default Admin Credentials
-
-```
 Email:    stackdev@futa.edu.ng
 Password: Stackdev.2026@futa
 ```
 
 New lecturers and students get the default password: `CheckIn@2024` (changeable after first login).
 
-## Project Structure
+   Project Structure
 
 ```
 src/
 ├── app/
-│   ├── api/                    # API routes (auth, admin, hod, lecturer, student)
-│   ├── layout.tsx              # Root layout with ThemeProvider
-│   └── page.tsx                # Role-based portal switcher
+│   ├── api/                       API routes (auth, admin, hod, lecturer, student)
+│   ├── layout.tsx                 Root layout with ThemeProvider
+│   └── page.tsx                   Role-based portal switcher
 ├── components/
-│   ├── checkin/                # Portal components (admin, hod, lecturer, student)
-│   ├── ui/                     # shadcn/ui components
-│   ├── theme-provider.tsx      # next-themes wrapper
-│   └── theme-toggle.tsx        # Light/dark mode toggle
+│   ├── checkin/                   Portal components (admin, hod, lecturer, student)
+│   ├── ui/                        shadcn/ui components
+│   ├── theme-provider.tsx         next-themes wrapper
+│   └── theme-toggle.tsx           Light/dark mode toggle
 ├── hooks/
-│   └── use-auth.ts             # Zustand auth store
+│   └── use-auth.ts                Zustand auth store
 └── lib/
-    ├── insforge.ts             # PostgREST DB client
-    ├── face-utils.ts           # MediaPipe FaceMesh descriptor + similarity
-    ├── geo.ts                  # Haversine distance validation
-    ├── auth.ts                 # bcrypt utilities
-    ├── constants.ts            # SLIT departments, levels, thresholds
-    └── types.ts                # TypeScript definitions
+    ├── insforge.ts                PostgREST DB client
+    ├── face-utils.ts              MediaPipe FaceMesh descriptor + similarity
+    ├── geo.ts                     Haversine distance validation
+    ├── auth.ts                    bcrypt utilities
+    ├── constants.ts               SLIT departments, levels, thresholds
+    └── types.ts                   TypeScript definitions
 ```
 
-## API Routes
+   API Routes
 
-### Authentication
+     Authentication
 - `POST /api/auth/login` — Login (admin, hod, lecturer, student)
 
-### Admin
+     Admin
 - `GET/POST/PUT/DELETE /api/admin/students` — Student CRUD
 - `GET/POST/PUT/DELETE /api/admin/lecturers` — Lecturer CRUD (incl. HOD assignment)
 - `GET/POST/PUT/DELETE /api/admin/departments` — Department CRUD
@@ -126,7 +93,7 @@ src/
 - `GET /api/admin/stats` — Dashboard statistics
 - `POST /api/admin/csv-import` — Bulk student import
 
-### HOD
+     HOD
 - `GET /api/hod/profile` — HOD profile + department info
 - `GET/POST/PATCH/DELETE /api/hod/lecturers` — Lecturer CRUD (department-scoped)
 - `GET/POST/PATCH/DELETE /api/hod/courses` — Course CRUD (department-scoped)
@@ -134,7 +101,7 @@ src/
 - `GET /api/hod/students` — View department students
 - `GET /api/hod/stats` — Department statistics
 
-### Lecturer
+     Lecturer
 - `GET/POST /api/lecturer/sessions` — Session management
 - `POST /api/lecturer/start-session` — Start session (captures GPS)
 - `POST /api/lecturer/end-session` — End session (marks absentees)
@@ -144,12 +111,12 @@ src/
 - `GET/POST /api/lecturer/grading` — Course grading
 - `GET /api/lecturer/export` — Export attendance CSV
 
-### Student
+     Student
 - `POST /api/student/activate` — Activate account (face capture + credentials)
 - `POST /api/student/check-in` — Check in to session (GPS + face verification)
 - `GET /api/student/sessions` — Available sessions
 - `GET /api/student/stats` — Attendance stats
 
-## License
+   License
 
 MIT
