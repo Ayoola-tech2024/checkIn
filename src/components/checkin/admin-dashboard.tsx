@@ -101,6 +101,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { ProfilePanel } from './profile-panel';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { VALID_LEVELS, SCHOOL } from '@/lib/constants';
 
 // ============================================================
@@ -282,6 +283,9 @@ export function AdminDashboard() {
               <UserCircle className="size-4" />
               <span className="hidden sm:inline">{user?.name}</span>
             </Button>
+            <div className="rounded-md border-white/20 bg-white/5 backdrop-blur-sm">
+              <ThemeToggle className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10" />
+            </div>
             <Button
               variant="ghost"
               size="icon"

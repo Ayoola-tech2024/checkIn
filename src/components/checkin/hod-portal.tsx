@@ -70,6 +70,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useAuthStore } from '@/hooks/use-auth';
 import { ProfilePanel } from '@/components/checkin/profile-panel';
+import { ThemeToggle } from '@/components/theme-toggle';
 import type { ApiResponse } from '@/lib/types';
 import { VALID_LEVELS, SCHOOL } from '@/lib/constants';
 import { toast } from 'sonner';
@@ -461,6 +462,7 @@ export function HodPortal() {
               <Users className="size-4 mr-1" />
               {user?.name}
             </Button>
+            <ThemeToggle className="h-9 w-9" />
             <Button variant="ghost" size="icon" onClick={logout}>
               <LogOut className="size-4" />
             </Button>

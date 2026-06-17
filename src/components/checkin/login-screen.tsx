@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Users,
 } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 type LoginStep = 'select-role' | 'login-form';
 
@@ -373,9 +374,13 @@ export function LoginScreen() {
         {/* Footer with subtle gradient */}
         <div className="mt-10 text-center">
           <div className="h-px bg-gradient-to-r from-transparent via-blue-200 dark:via-blue-800/40 to-transparent mb-4" />
-          <p className="text-xs text-muted-foreground/70">
-            checkIn &mdash; Student Attendance Platform
-          </p>
+          <div className="flex items-center justify-center gap-3">
+            <p className="text-xs text-muted-foreground/70">
+              checkIn &mdash; Student Attendance Platform
+            </p>
+            <span className="text-muted-foreground/30">·</span>
+            <ThemeToggle className="h-7 w-7" />
+          </div>
         </div>
       </div>
     </div>

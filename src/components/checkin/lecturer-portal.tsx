@@ -75,6 +75,7 @@ import { AnalyticsPanel } from './analytics-panel';
 import { GradingPanel } from './grading-panel';
 import { ExportPanel } from './export-panel';
 import { ProfilePanel } from './profile-panel';
+import { ThemeToggle } from '@/components/theme-toggle';
 import type {
   SessionInfo,
   AttendanceInfo,
@@ -1096,6 +1097,9 @@ export function LecturerPortal() {
                 </Badge>
               )}
             </Button>
+            <div className="rounded-md border-white/20 bg-white/5 backdrop-blur-sm">
+              <ThemeToggle className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10" />
+            </div>
             <Button
               variant="ghost"
               size="icon"

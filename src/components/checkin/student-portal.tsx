@@ -47,6 +47,7 @@ import { useAuthStore } from '@/hooks/use-auth';
 import { FaceCapture } from '@/components/checkin/face-capture';
 import { CheckInFlow } from '@/components/checkin/check-in-flow';
 import { ProfilePanel } from '@/components/checkin/profile-panel';
+import { ThemeToggle } from '@/components/theme-toggle';
 import type { SessionInfo, CheckInResult, AttendanceStatus, ApiResponse } from '@/lib/types';
 import { SESSION_POLL_INTERVAL, SCHOOL } from '@/lib/constants';
 import { toast } from 'sonner';
@@ -556,6 +557,9 @@ function ActivePortal() {
               >
                 <RefreshCw className="h-4 w-4" />
               </Button>
+              <div className="rounded-md border-white/20 bg-white/5 backdrop-blur-sm">
+                <ThemeToggle className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10" />
+              </div>
               <Button
                 variant="ghost"
                 size="icon"
