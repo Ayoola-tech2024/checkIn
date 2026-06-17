@@ -1,0 +1,16 @@
+# Exclude development-only files from Vercel deployment
+skills/
+mini-services/
+.insforge
+.claude
+.z-ai-config
+db/
+prisma/
+*.log
+dev.log
+dev.out.log
+server.log
+tool-results/
+test
+prompt
+README.md
