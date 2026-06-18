@@ -687,3 +687,63 @@ Notes / Follow-ups:
 - The remaining pre-existing TS errors in admin/*, lecturer/*, and
   auth/login/route.ts use the same `(arr || []).map((x: Record<string,
   unknown>) => ...)` pattern and could be batch-fixed in a separate sweep.
+
+---
+Task ID: 5
+Agent: Main
+Task: P0+P1 Security Hardening — Option A execution
+
+Work Log:
+- Created JWT session management (src/lib/session.ts) using jose library
+  * Signs/verifies HS256 JWTs with SESSION_SECRET env var
+  * 7-day expiration, HTTP-only + Secure + SameSite=lax cookie
+- Created auth context helper (src/lib/auth-context.ts) for route handlers to read authenticated user from middleware-set headers
+- Created Next.js middleware (src/middleware.ts) protecting all /api/* routes:
+  * Allows /api/auth/login (public)
+  * Requires valid JWT cookie on all other API routes (401 if missing/invalid)
+  * Enforces role-based access: /api/admin/* → admin, /api/hod/* → hod, /api/lecturer/* → lecturer+hod, /api/student/* → student (403 if wrong role)
+  * Sets x-user-id, x-user-role, x-user-email, x-user-name headers for route handlers
+- Moved InsForge API key to server-only: removed NEXT_PUBLIC_ prefix, removed hardcoded fallback, env var now required
+- Removed default-password auto-apply in login route — accounts with null password_hash now return 403 "Account not activated" instead of silently applying CheckIn@2024
+- Login route now sets JWT cookie on successful authentication
+- Created /api/auth/logout (clears cookie) and /api/auth/me (returns authenticated user)
+- Deleted /api/admin/init route permanently
+- Deleted dead code: src/lib/db.ts, prisma/, db/custom.db, examples/, seed files, agent-ctx/, insforge-schema.sql
+- Removed unused dependencies: prisma, @prisma/client, next-auth, next-intl, socket.io, z-ai-web-dev-sdk
+- Added jose as explicit dependency (was transitive only — caused middleware to crash on Vercel)
+
+Route hardening (via 3 parallel subagents):
+- HARDEN-LECTURER: All 10 lecturer routes now use auth.userId instead of client-supplied lecturerId. end-session and review-action verify session ownership.
+- HARDEN-STUDENT: All 4 student routes (stats, sessions, activate, profile) now use auth.userId. check-in was already done by main agent.
+- HARDEN-HOD: All 6 HOD routes look up department from auth.userId (not client-supplied). Fixed HOD stats to scope sessions by department.
+
+UI fixes:
+- Removed venue-coordinate fallback from start-session route (requires real GPS)
+- Removed venue-coordinate fallback from check-in route (requires lecturer GPS)
+- Removed "Venue" button from lecturer portal (was labeled "for demo/sandbox")
+- Removed "Upload Photo" mode from face-capture component (forces live camera only)
+- Fixed CSV import to reject non-SLIT departments (was auto-creating arbitrary codes)
+- Updated auth store to validate session via /api/auth/me on page load
+- Wired all logout buttons to call /api/auth/logout (clears server cookie)
+
+Vercel deployment:
+- Set env vars on Vercel: INSFORGE_URL, INSFORGE_API_KEY, SESSION_SECRET
+- Set framework explicitly to "nextjs" on Vercel project
+- Triggered fresh deployment with forceNewDeployment=1 to bypass build cache
+- Pointed checkinfuta.vercel.app alias to fresh deployment
+
+Verification (all 8 tests passed on live Vercel deployment):
+1. Unauthenticated API → 401 "Authentication required" ✅
+2. Login → success, cookie set ✅
+3. Authenticated stats → success, real data returned ✅
+4. /api/auth/me → returns authenticated user ✅
+5. Admin accessing student route → 403 "Insufficient permissions" ✅
+6. Admin accessing lecturer route → 403 "Insufficient permissions" ✅
+7. Logout → success, cookie cleared ✅
+8. After logout → 401 "Authentication required" ✅
+
+Stage Summary:
+- ALL P0 security vulnerabilities fixed: API key server-only, JWT auth middleware, no default-password auto-apply, init route deleted, dead code removed
+- ALL P1 issues fixed: no venue fallback, live camera only, CSV validates SLIT departments, HOD stats department-scoped
+- All routes hardened against horizontal privilege escalation (lecturer/student/HOD use auth.userId, not client-supplied IDs)
+- Production deployment at https://checkinfuta.vercel.app is now secure and fully functional
