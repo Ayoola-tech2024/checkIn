@@ -19,7 +19,7 @@ const ROLE_RULES: { prefix: string; roles: string[] }[] = [
 // Paths that are public (no auth required)
 const PUBLIC_PATHS = ['/api/auth/login'];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Only protect API routes
