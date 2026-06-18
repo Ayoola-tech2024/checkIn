@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 function ensureIntLevel(level: unknown): number {
   if (typeof level === 'number') return level;
@@ -12,15 +13,14 @@ function ensureIntLevel(level: unknown): number {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const lecturerId = searchParams.get('lecturerId');
-
-    if (!lecturerId) {
+    const auth = getAuthUser(request);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: 'Lecturer ID is required' },
-        { status: 400 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
+    const lecturerId = auth.userId;
 
     // Fetch sessions for this lecturer
     const { data: sessions, error } = await db
@@ -163,11 +163,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    const lecturerId = auth.userId;
+
     const {
       title,
       courseId,
       venueId,
-      lecturerId,
       level,
       departmentIds,
       distanceThreshold,
@@ -175,9 +183,9 @@ export async function POST(request: NextRequest) {
       scheduledAt,
     } = await request.json();
 
-    if (!title || !courseId || !venueId || !lecturerId || !level || !departmentIds || !Array.isArray(departmentIds) || !scheduledAt) {
+    if (!title || !courseId || !venueId || !level || !departmentIds || !Array.isArray(departmentIds) || !scheduledAt) {
       return NextResponse.json(
-        { success: false, error: 'Title, courseId, venueId, lecturerId, level, departmentIds, and scheduledAt are required' },
+        { success: false, error: 'Title, courseId, venueId, level, departmentIds, and scheduledAt are required' },
         { status: 400 }
       );
     }

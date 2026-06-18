@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
 
@@ -27,6 +36,14 @@ export async function GET(request: NextRequest) {
     }
 
     const session = sessions[0] as Record<string, unknown>;
+
+    // Verify ownership: session must belong to the authenticated lecturer
+    if (session.lecturer_id !== auth.userId) {
+      return NextResponse.json(
+        { success: false, error: 'You do not have permission to access this session' },
+        { status: 403 }
+      );
+    }
 
     // Fetch related data in parallel
     const [

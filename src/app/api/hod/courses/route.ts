@@ -6,14 +6,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { validateCourseFields } from '@/lib/slit-validation';
 import { VALID_LEVELS } from '@/lib/constants';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const departmentId = searchParams.get('departmentId');
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
+    // Look up the HOD's department from the database using auth.userId.
+    // Never trust a client-supplied departmentId.
+    const { data: hodLecturers } = await db
+      .from('lecturers')
+      .select('hod_department_id, department_id')
+      .eq('id', auth.userId);
+    if (!hodLecturers || hodLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'HOD record not found' }, { status: 404 });
+    }
+    const hodLecturer = hodLecturers[0] as Record<string, unknown>;
+    const departmentId = hodLecturer.hod_department_id || hodLecturer.department_id;
     if (!departmentId) {
-      return NextResponse.json({ success: false, error: 'Department ID is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'No department assigned to this HOD' }, { status: 403 });
     }
 
     const { data: courses, error } = await db
@@ -28,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     // Enrich with lecturer info
     const coursesWithLecturer = await Promise.all(
-      (courses || []).map(async (course: Record<string, unknown>) => {
+      ((courses || []) as Record<string, unknown>[]).map(async (course) => {
         let lecturerName: string | undefined;
         if (course.lecturer_id) {
           const { data: lecs } = await db.from('lecturers').select('name').eq('id', course.lecturer_id as string);
@@ -55,20 +69,45 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { name, code, level, departmentId, schoolId, lecturerId } = body;
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!name || !code || !departmentId || !schoolId) {
+    const body = await request.json();
+    const { name, code, level, lecturerId } = body;
+
+    if (!name || !code) {
       return NextResponse.json(
-        { success: false, error: 'Name, code, department, and school are required' },
+        { success: false, error: 'Name and code are required' },
         { status: 400 }
       );
+    }
+
+    // Look up the HOD's department and school from the database using auth.userId.
+    // The new course is created in the HOD's own department — never trust
+    // client-supplied departmentId/schoolId.
+    const { data: hodLecturers } = await db
+      .from('lecturers')
+      .select('hod_department_id, department_id, school_id')
+      .eq('id', auth.userId);
+    if (!hodLecturers || hodLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'HOD record not found' }, { status: 404 });
+    }
+    const hodLecturer = hodLecturers[0] as Record<string, unknown>;
+    const departmentId = hodLecturer.hod_department_id || hodLecturer.department_id;
+    const schoolId = hodLecturer.school_id;
+    if (!departmentId) {
+      return NextResponse.json({ success: false, error: 'No department assigned to this HOD' }, { status: 403 });
+    }
+    if (!schoolId) {
+      return NextResponse.json({ success: false, error: 'No school assigned to this HOD' }, { status: 403 });
     }
 
     const courseLevel = level || 100;
 
     // Validate level
-    const levelValidation = validateCourseFields({ level: courseLevel, schoolId, departmentId });
+    const levelValidation = validateCourseFields({ level: courseLevel, schoolId: schoolId as string, departmentId: departmentId as string });
     if (!levelValidation.valid) {
       return NextResponse.json({ success: false, error: levelValidation.errors.join(', ') }, { status: 400 });
     }

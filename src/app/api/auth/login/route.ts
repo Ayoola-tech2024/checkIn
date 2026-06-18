@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
-import { verifyPassword, generateDefaultPassword } from '@/lib/auth';
+import { verifyPassword } from '@/lib/auth';
+import { createSessionToken, getCookieOptions, getSessionCookieName } from '@/lib/session';
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,6 +20,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Helper: set session cookie on the response
+    const setSessionCookie = (response: NextResponse, token: string) => {
+      const opts = getCookieOptions();
+      response.cookies.set(getSessionCookieName(), token, opts);
+      return response;
+    };
 
     if (role === 'admin') {
       if (!email) {
@@ -42,15 +50,16 @@ export async function POST(request: NextRequest) {
           { status: 401 }
         );
       }
-      return NextResponse.json({
-        success: true,
-        data: {
-          id: admin.id,
-          name: admin.name,
-          email: admin.email,
-          role: 'admin',
-        },
-      });
+
+      const userData = {
+        id: admin.id as string,
+        name: admin.name as string,
+        email: admin.email as string,
+        role: 'admin' as const,
+      };
+      const token = await createSessionToken({ ...userData, role: 'admin' });
+      const response = NextResponse.json({ success: true, data: userData });
+      return setSessionCookie(response, token);
     }
 
     if (role === 'lecturer' || role === 'hod') {
@@ -61,7 +70,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Fetch lecturer without nested resources
       const { data: lecturers, error } = await db.from('lecturers').select('*').eq('email', email);
       if (error || !lecturers || lecturers.length === 0) {
         return NextResponse.json(
@@ -71,7 +79,6 @@ export async function POST(request: NextRequest) {
       }
       const lecturer = lecturers[0] as Record<string, unknown>;
 
-      // If logging in as HOD, verify is_hod
       if (role === 'hod' && !lecturer.is_hod) {
         return NextResponse.json(
           { success: false, error: 'This account is not designated as a Head of Department' },
@@ -79,26 +86,21 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Handle password
+      // SECURITY: No more auto-applying default password.
+      // If password_hash is null, the account has not been properly provisioned.
       if (!lecturer.password_hash) {
-        const { hashPassword } = await import('@/lib/auth');
-        const defaultHash = await hashPassword(generateDefaultPassword());
-        await db.from('lecturers').update({ password_hash: defaultHash }).eq('id', lecturer.id as string);
-        const valid = await verifyPassword(password, defaultHash);
-        if (!valid) {
-          return NextResponse.json(
-            { success: false, error: 'Invalid credentials. Default password is CheckIn@2024' },
-            { status: 401 }
-          );
-        }
-      } else {
-        const valid = await verifyPassword(password, lecturer.password_hash as string);
-        if (!valid) {
-          return NextResponse.json(
-            { success: false, error: 'Invalid credentials' },
-            { status: 401 }
-          );
-        }
+        return NextResponse.json(
+          { success: false, error: 'Account not activated. Please contact your administrator to set up your password.' },
+          { status: 403 }
+        );
+      }
+
+      const valid = await verifyPassword(password, lecturer.password_hash as string);
+      if (!valid) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid credentials' },
+          { status: 401 }
+        );
       }
 
       // Fetch school info
@@ -116,7 +118,6 @@ export async function POST(request: NextRequest) {
         .select('*')
         .eq('lecturer_id', lecturer.id as string);
 
-      // For each course, manually fetch its departments
       const coursesWithDepts = await Promise.all(
         (lecturerCourses || []).map(async (c: Record<string, unknown>) => {
           const { data: courseDepts } = await db
@@ -150,7 +151,6 @@ export async function POST(request: NextRequest) {
         })
       );
 
-      // Fetch department name for lecturer if department_id exists
       let lecturerDepartmentName: string | undefined;
       if (lecturer.department_id) {
         const { data: lecturerDepts } = await db
@@ -160,7 +160,6 @@ export async function POST(request: NextRequest) {
         lecturerDepartmentName = (lecturerDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
       }
 
-      // Fetch HOD department name if hod_department_id exists
       let hodDepartmentName: string | undefined;
       if (lecturer.hod_department_id) {
         const { data: hodDepts } = await db
@@ -170,27 +169,31 @@ export async function POST(request: NextRequest) {
         hodDepartmentName = (hodDepts?.[0] as Record<string, unknown>)?.name as string | undefined;
       }
 
-      // Determine role for response
       const responseRole = role === 'hod' ? 'hod' : 'lecturer';
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          id: lecturer.id,
-          name: lecturer.name,
-          email: lecturer.email,
-          role: responseRole,
-          schoolId: lecturer.school_id,
-          schoolName,
-          schoolCode,
-          departmentId: lecturer.department_id,
-          departmentName: lecturerDepartmentName,
-          isHod: lecturer.is_hod ?? false,
-          hodDepartmentId: lecturer.hod_department_id,
-          hodDepartmentName,
-          courses: coursesWithDepts,
-        },
+      const userData = {
+        id: lecturer.id as string,
+        name: lecturer.name as string,
+        email: lecturer.email as string,
+        role: responseRole as 'lecturer' | 'hod',
+        schoolId: lecturer.school_id as string | undefined,
+        schoolName,
+        schoolCode,
+        departmentId: lecturer.department_id as string | undefined,
+        departmentName: lecturerDepartmentName,
+        isHod: lecturer.is_hod as boolean | undefined,
+        hodDepartmentId: lecturer.hod_department_id as string | undefined,
+        hodDepartmentName,
+        courses: coursesWithDepts,
+      };
+      const token = await createSessionToken({
+        userId: userData.id,
+        role: userData.role,
+        email: userData.email,
+        name: userData.name,
       });
+      const response = NextResponse.json({ success: true, data: userData });
+      return setSessionCookie(response, token);
     }
 
     if (role === 'student') {
@@ -226,29 +229,23 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Handle password
+      // SECURITY: No more auto-applying default password.
+      // If password_hash is null, the account must be activated first.
       if (!student.password_hash) {
-        const { hashPassword } = await import('@/lib/auth');
-        const defaultHash = await hashPassword(generateDefaultPassword());
-        await db.from('students').update({ password_hash: defaultHash }).eq('id', student.id as string);
-        const valid = await verifyPassword(password, defaultHash);
-        if (!valid) {
-          return NextResponse.json(
-            { success: false, error: 'Invalid credentials. Default password is CheckIn@2024' },
-            { status: 401 }
-          );
-        }
-      } else {
-        const valid = await verifyPassword(password, student.password_hash as string);
-        if (!valid) {
-          return NextResponse.json(
-            { success: false, error: 'Invalid credentials. Default password is CheckIn@2024' },
-            { status: 401 }
-          );
-        }
+        return NextResponse.json(
+          { success: false, error: 'Account not activated. Please activate your account first using your matric number and default password.' },
+          { status: 403 }
+        );
       }
 
-      // Fetch school info
+      const valid = await verifyPassword(password, student.password_hash as string);
+      if (!valid) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid credentials' },
+          { status: 401 }
+        );
+      }
+
       let schoolName: string | undefined;
       let schoolCode: string | undefined;
       if (student.school_id) {
@@ -257,7 +254,6 @@ export async function POST(request: NextRequest) {
         schoolCode = (schoolData?.[0] as Record<string, unknown>)?.code as string | undefined;
       }
 
-      // Manually fetch department
       let departmentName: string | undefined;
       if (student.department_id) {
         const { data: depts } = await db
@@ -267,23 +263,28 @@ export async function POST(request: NextRequest) {
         departmentName = (depts?.[0] as Record<string, unknown>)?.name as string | undefined;
       }
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          id: student.id,
-          name: student.name,
-          email: student.email,
-          role: 'student',
-          matricNumber: student.matric_number,
-          departmentId: student.department_id,
-          departmentName,
-          schoolId: student.school_id,
-          schoolName,
-          schoolCode,
-          level: typeof student.level === 'number' ? student.level : (typeof student.level === 'string' ? parseInt(student.level as string, 10) || 100 : 100),
-          activated: student.activated,
-        },
+      const userData = {
+        id: student.id as string,
+        name: student.name as string,
+        email: student.email as string,
+        role: 'student' as const,
+        matricNumber: student.matric_number as string,
+        departmentId: student.department_id as string | undefined,
+        departmentName,
+        schoolId: student.school_id as string | undefined,
+        schoolName,
+        schoolCode,
+        level: typeof student.level === 'number' ? student.level : (typeof student.level === 'string' ? parseInt(student.level as string, 10) || 100 : 100),
+        activated: student.activated as boolean,
+      };
+      const token = await createSessionToken({
+        userId: userData.id,
+        role: 'student',
+        email: userData.email,
+        name: userData.name,
       });
+      const response = NextResponse.json({ success: true, data: userData });
+      return setSessionCookie(response, token);
     }
 
     return NextResponse.json(

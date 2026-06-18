@@ -1,15 +1,16 @@
 // ============================================================
 // checkIn - Face Capture Component (Google MediaPipe FaceMesh)
 // ============================================================
+// SECURITY: Live camera ONLY — no photo upload mode.
+// This prevents activation/check-in with a static photo of
+// another person.
 
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, AlertTriangle, CheckCircle2, Loader2, X, RotateCcw, Upload, UserCircle } from 'lucide-react';
+import { Camera, AlertTriangle, CheckCircle2, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Label } from '@/components/ui/label';
 import { MAX_SELFIE_SIZE_KB } from '@/lib/constants';
 import { landmarksToDescriptor, compressCanvasImage } from '@/lib/face-utils';
 
@@ -28,10 +29,9 @@ type DetectionStatus =
   | 'no-face'
   | 'error';
 
-export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
+export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const faceMeshRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
@@ -40,7 +40,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
   const [capturedSelfie, setCapturedSelfie] = useState<string | null>(null);
   const [capturedDescriptor, setCapturedDescriptor] = useState<number[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [method, setMethod] = useState<'camera' | 'upload'>('camera');
   const [lastLandmarks, setLastLandmarks] = useState<any>(null);
 
   // Load MediaPipe FaceMesh
@@ -50,7 +49,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     try {
       setStatus('loading-model');
 
-      // Dynamic import of MediaPipe FaceMesh
       const { FaceMesh } = await import('@mediapipe/face_mesh');
 
       const faceMesh = new FaceMesh({
@@ -97,7 +95,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
       ctx.strokeStyle = 'rgba(0, 200, 100, 0.3)';
       ctx.lineWidth = 1;
 
-      // Draw key face contour points
       const faceOval = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109, 10];
       ctx.beginPath();
       for (let i = 0; i < faceOval.length; i++) {
@@ -111,7 +108,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
       }
       ctx.stroke();
 
-      // Draw a green checkmark indicator
       ctx.fillStyle = 'rgba(0, 200, 100, 0.8)';
       ctx.font = '24px sans-serif';
       ctx.fillText('✓ Face Detected', 10, 30);
@@ -189,58 +185,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     stopCamera();
   }, [lastLandmarks, stopCamera]);
 
-  // Process uploaded image
-  const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      setStatus('loading-model');
-      const faceMesh = await loadFaceMesh();
-      if (!faceMesh) return;
-
-      const img = new Image();
-      img.onload = async () => {
-        // Draw to canvas
-        if (!canvasRef.current) return;
-        const canvas = canvasRef.current;
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0);
-
-        faceMesh.onResults((results: any) => {
-          if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-            const landmarks = results.multiFaceLandmarks[0];
-            const selfieData = compressCanvasImage(canvas, MAX_SELFIE_SIZE_KB);
-            const descriptor = landmarksToDescriptor(landmarks);
-
-            if (descriptor.length > 0) {
-              setCapturedSelfie(selfieData);
-              setCapturedDescriptor(descriptor);
-              setStatus('face-found');
-            } else {
-              setErrorMessage('Failed to process facial data from image.');
-              setStatus('error');
-            }
-          } else {
-            setErrorMessage('No face detected in the uploaded image. Please use a clear frontal photo.');
-            setStatus('no-face');
-          }
-        });
-
-        await faceMesh.send({ image: img });
-      };
-
-      img.src = URL.createObjectURL(file);
-    } catch (error) {
-      console.error('Upload processing error:', error);
-      setErrorMessage('Failed to process uploaded image.');
-      setStatus('error');
-    }
-  }, [loadFaceMesh]);
-
   // Confirm capture
   const handleConfirm = useCallback(() => {
     if (capturedSelfie && capturedDescriptor) {
@@ -258,11 +202,8 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     setLastLandmarks(null);
     setErrorMessage('');
     setStatus('idle');
-
-    if (method === 'camera') {
-      startCamera();
-    }
-  }, [method, startCamera]);
+    startCamera();
+  }, [startCamera]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -271,41 +212,17 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
     };
   }, [stopCamera]);
 
-  // Auto-start camera when method is camera
+  // Auto-start camera on mount
   useEffect(() => {
-    if (method === 'camera' && status === 'idle') {
+    if (status === 'idle') {
       startCamera();
     }
-  }, [method, startCamera, status]);
+  }, [startCamera, status]);
 
   return (
     <div className="space-y-4">
-      {/* Method Selection */}
-      {!capturedSelfie && (
-        <div className="flex gap-2">
-          <Button
-            variant={method === 'camera' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => { setMethod('camera'); handleReset(); }}
-            className="flex-1"
-          >
-            <Camera className="size-4 mr-2" />
-            Camera
-          </Button>
-          <Button
-            variant={method === 'upload' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => { setMethod('upload'); stopCamera(); setStatus('idle'); }}
-            className="flex-1"
-          >
-            <Upload className="size-4 mr-2" />
-            Upload Photo
-          </Button>
-        </div>
-      )}
-
       {/* Camera View */}
-      {method === 'camera' && !capturedSelfie && (
+      {!capturedSelfie && (
         <div className="relative rounded-lg overflow-hidden border bg-black">
           <video
             ref={videoRef}
@@ -355,31 +272,6 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
         </div>
       )}
 
-      {/* Upload View */}
-      {method === 'upload' && !capturedSelfie && (
-        <div className="space-y-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="user"
-            onChange={handleUpload}
-            className="hidden"
-          />
-          <Button
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full h-32 border-dashed"
-          >
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <Upload className="size-8" />
-              <span className="text-sm">Click to upload a clear photo of your face</span>
-            </div>
-          </Button>
-          <canvas ref={canvasRef} className="hidden" />
-        </div>
-      )}
-
       {/* Captured Preview */}
       {capturedSelfie && (
         <div className="space-y-3">
@@ -418,7 +310,7 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
       )}
 
       {/* Camera Capture Button */}
-      {method === 'camera' && !capturedSelfie && status === 'face-found' && (
+      {!capturedSelfie && status === 'face-found' && (
         <Button onClick={handleCapture} className="w-full" size="lg">
           <Camera className="size-4 mr-2" />
           Capture Face
@@ -436,7 +328,7 @@ export function FaceCapture({ onCapture, mode, onError }: FaceCaptureProps) {
       {/* Instructions */}
       {!capturedSelfie && (
         <div className="text-xs text-muted-foreground space-y-1">
-          <p className="font-medium">Tips for best results:</p>
+          <p className="font-medium">Live camera is required for verification:</p>
           <ul className="list-disc list-inside space-y-0.5 ml-1">
             <li>Ensure good lighting on your face</li>
             <li>Face the camera directly (frontal view)</li>

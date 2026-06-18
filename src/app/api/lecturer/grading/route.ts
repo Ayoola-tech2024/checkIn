@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const lecturerId = searchParams.get('lecturerId');
-    const semesterId = searchParams.get('semesterId');
-
-    if (!lecturerId) {
+    const auth = getAuthUser(request);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: 'Lecturer ID is required' },
-        { status: 400 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
+    const lecturerId = auth.userId;
+    const { searchParams } = new URL(request.url);
+    const semesterId = searchParams.get('semesterId');
 
     // Get lecturer's courses
     const { data: courses, error } = await db
@@ -89,6 +90,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const { courseId, semesterId, totalMarks } = await request.json();
 
     if (!courseId || !semesterId || totalMarks === undefined) {
@@ -99,11 +108,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify course exists
-    const { data: courses } = await db.from('courses').select('id').eq('id', courseId);
+    const { data: courses } = await db.from('courses').select('id, lecturer_id').eq('id', courseId);
     if (!courses || courses.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Course not found' },
         { status: 404 }
+      );
+    }
+
+    // Verify ownership: the course must belong to the authenticated lecturer
+    const course = courses[0] as Record<string, unknown>;
+    if (course.lecturer_id !== auth.userId) {
+      return NextResponse.json(
+        { success: false, error: 'You do not have permission to access this course' },
+        { status: 403 }
       );
     }
 

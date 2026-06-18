@@ -4,15 +4,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const lecturerId = searchParams.get('lecturerId');
-
-    if (!lecturerId) {
-      return NextResponse.json({ success: false, error: 'Lecturer ID is required' }, { status: 400 });
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Use the authenticated user's ID — never trust a client-supplied lecturerId.
+    const lecturerId = auth.userId;
 
     const { data: lecturers, error } = await db.from('lecturers').select('*').eq('id', lecturerId);
     if (error || !lecturers || lecturers.length === 0) {
@@ -26,7 +28,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch department info
-    let department = null;
+    let department: Record<string, unknown> | null = null;
     const deptId = (lecturer.hod_department_id || lecturer.department_id) as string;
     if (deptId) {
       const { data: depts } = await db.from('departments').select('*').eq('id', deptId);

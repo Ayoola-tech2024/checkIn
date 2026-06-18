@@ -338,9 +338,9 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
   };
 
   // Handle logout
-  const handleLogout = () => {
+  const handleLogout = async () => {
     onOpenChange(false);
-    logout();
+    await logout();
     toast.success('Logged out successfully');
   };
 

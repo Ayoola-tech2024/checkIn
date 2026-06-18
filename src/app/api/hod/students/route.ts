@@ -4,16 +4,32 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const departmentId = searchParams.get('departmentId');
-    const level = searchParams.get('level');
-
-    if (!departmentId) {
-      return NextResponse.json({ success: false, error: 'Department ID is required' }, { status: 400 });
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Look up the HOD's department from the database using auth.userId.
+    // Never trust a client-supplied departmentId.
+    const { data: hodLecturers } = await db
+      .from('lecturers')
+      .select('hod_department_id, department_id')
+      .eq('id', auth.userId);
+    if (!hodLecturers || hodLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'HOD record not found' }, { status: 404 });
+    }
+    const hodLecturer = hodLecturers[0] as Record<string, unknown>;
+    const departmentId = hodLecturer.hod_department_id || hodLecturer.department_id;
+    if (!departmentId) {
+      return NextResponse.json({ success: false, error: 'No department assigned to this HOD' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const level = searchParams.get('level');
 
     let query = db.from('students').select('*').eq('department_id', departmentId);
 
@@ -27,7 +43,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    const formattedStudents = (students || []).map((s: Record<string, unknown>) => ({
+    const formattedStudents = ((students || []) as Record<string, unknown>[]).map((s) => ({
       id: s.id,
       name: s.name,
       matricNumber: s.matric_number,

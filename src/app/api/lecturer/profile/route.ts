@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { verifyPassword, hashPassword } from '@/lib/auth';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const lecturerId = searchParams.get('lecturerId');
-
-    if (!lecturerId) {
+    const auth = getAuthUser(request);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: 'Lecturer ID is required' },
-        { status: 400 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
+    const lecturerId = auth.userId;
 
     const { data: lecturers, error } = await db
       .from('lecturers')
@@ -128,14 +128,16 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { id, name, email, currentPassword, newPassword } = await request.json();
-
-    if (!id) {
+    const auth = getAuthUser(request);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: 'Lecturer ID is required' },
-        { status: 400 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
+    const id = auth.userId;
+
+    const { name, email, currentPassword, newPassword } = await request.json();
 
     // Fetch current lecturer record
     const { data: lecturers, error: fetchError } = await db

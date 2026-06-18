@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { verifyPassword, hashPassword } from '@/lib/auth';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const studentId = searchParams.get('studentId');
-
-    if (!studentId) {
+    const auth = getAuthUser(request);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: 'Student ID is required' },
-        { status: 400 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
+
+    // SECURITY: Use the authenticated student's ID, not a client-supplied one.
+    const studentId = auth.userId;
 
     const { data: students, error } = await db
       .from('students')
@@ -74,20 +76,24 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { id, name, email, currentPassword, newPassword } = await request.json();
-
-    if (!id) {
+    const auth = getAuthUser(request);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: 'Student ID is required' },
-        { status: 400 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
+
+    // SECURITY: Use the authenticated student's ID, not a client-supplied one.
+    const studentId = auth.userId;
+
+    const { name, email, currentPassword, newPassword } = await request.json();
 
     // Fetch current student record
     const { data: students, error: fetchError } = await db
       .from('students')
       .select('*')
-      .eq('id', id);
+      .eq('id', studentId);
 
     if (fetchError || !students || students.length === 0) {
       return NextResponse.json(
@@ -119,7 +125,7 @@ export async function PUT(request: NextRequest) {
       const { error: updateError } = await db
         .from('students')
         .update({ name, email, password_hash: hashedNewPassword })
-        .eq('id', id);
+        .eq('id', studentId);
 
       if (updateError) {
         return NextResponse.json(
@@ -132,7 +138,7 @@ export async function PUT(request: NextRequest) {
       const { error: updateError } = await db
         .from('students')
         .update({ name, email })
-        .eq('id', id);
+        .eq('id', studentId);
 
       if (updateError) {
         return NextResponse.json(
@@ -146,7 +152,7 @@ export async function PUT(request: NextRequest) {
     const { data: updatedStudents, error: refetchError } = await db
       .from('students')
       .select('*')
-      .eq('id', id);
+      .eq('id', studentId);
 
     if (refetchError || !updatedStudents || updatedStudents.length === 0) {
       return NextResponse.json(

@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const lecturerId = searchParams.get('lecturerId');
-
-    if (!lecturerId) {
+    const auth = getAuthUser(request);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: 'Lecturer ID is required' },
-        { status: 400 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
+    const lecturerId = auth.userId;
 
     // Fetch courses for this lecturer
     const { data: courses, error } = await db

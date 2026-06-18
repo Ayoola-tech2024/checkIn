@@ -395,3 +395,295 @@ Despite the above, several subsystems are well-built and need no changes:
 7. Fix CSV import to reject non-SLIT departments — ~15 minutes.
 
 Items 1-7 are roughly 1-1.5 days of focused work and would bring the system to a defensible production state. Missing features (QR codes, per-student grading, level-based lecturer routing, liveness detection) are scope questions for SLIT — they can ship without them if SLIT agrees, but the school should be explicitly told they're not present.
+
+---
+Task ID: HARDEN-STUDENT
+Agent: Sub-agent (general-purpose)
+Task: Harden student API routes against horizontal privilege escalation by replacing client-supplied studentId with authenticated user ID
+
+Work Log:
+- Read project context from worklog.md and reviewed the existing hardened check-in route as the reference pattern
+- Reviewed src/lib/auth-context.ts to confirm the getAuthUser(request) helper returns { userId, role, email, name } from x-user-* headers set by middleware
+- Updated 4 student API routes to derive studentId from auth.userId (set by middleware after JWT verification), eliminating client-controlled studentId parameters
+
+Files modified (all in /home/z/my-project/src/app/api/student/):
+
+1. stats/route.ts (GET)
+   - Added import: `import { getAuthUser } from '@/lib/auth-context';`
+   - Removed `searchParams`/`studentId` query parsing and the "Student ID is required" 400 branch
+   - Added `const auth = getAuthUser(request)` with 401 fallback
+   - Set `const studentId = auth.userId` (with SECURITY comment)
+   - All downstream logic (attendances query, upcoming sessions, recent attendance) unchanged and now bound to the authenticated student
+
+2. sessions/route.ts (GET)
+   - Added import: `import { getAuthUser } from '@/lib/auth-context';`
+   - Removed `searchParams`/`studentId` query parsing and the "Student ID is required" 400 branch
+   - Added auth check (401 fallback) + `const studentId = auth.userId`
+   - All downstream logic (student fetch, session_departments, attendances map, course/venue joins, response shape) unchanged
+
+3. activate/route.ts (POST)
+   - Added import: `import { getAuthUser } from '@/lib/auth-context';`
+   - Added auth check (401 fallback) BEFORE reading the body; set `const studentId = auth.userId`
+   - Removed `studentId` from destructured body (now only `email, password, facialData, selfieData` come from the body, per task instructions)
+   - Updated required-field validation from `if (!studentId || !email || !password)` to `if (!email || !password)` with message "Email and password are required"
+   - Preserved all other validation: email format check, password length check, activation-already check, email-uniqueness check (still uses `s.id !== studentId` where studentId is now auth.userId)
+   - Preserved facial data handling (string vs object), update operation, and full response shape
+
+4. profile/route.ts (GET and PUT)
+   - Added import: `import { getAuthUser } from '@/lib/auth-context';`
+   - GET: replaced `searchParams.get('studentId')` + 400 branch with auth check (401) + `const studentId = auth.userId`. Rest of GET (student fetch, department/school joins, response) unchanged.
+   - PUT: removed `id` from destructured body (now only `name, email, currentPassword, newPassword` come from the body). Added auth check (401) + `const studentId = auth.userId` BEFORE reading the body. Replaced all four `.eq('id', id)` / `.eq('id', studentId)` references with the auth-derived `studentId`. Preserved password-change validation (current password verification via verifyPassword, newPassword hashing) and the "no password set" guard, plus the final refetch and response shape.
+
+Notes:
+- check-in/route.ts was explicitly left untouched (already hardened in a prior step).
+- Response structures, status codes, error handling, and all business logic preserved; only the source of the student ID changed.
+- The middleware already enforces role "student" on /api/student/*, so no role check was added inside the handlers (per task instructions).
+- TypeScript check: ran `npx tsc --noEmit --pretty`. The errors reported in the modified files (student/activate:72, student/sessions:52/72/76/77/85/88/98/121, student/stats:45) are PRE-EXISTING codebase-wide typing issues with `.map((x: Record<string, unknown>) => ...)` callbacks against supabase `unknown[]` query results — confirmed by stashing my changes and re-running tsc, which produced the identical set of errors at the same logical locations (just shifted line numbers). No new TypeScript errors were introduced by this task.
+
+Stage Summary:
+- Horizontal privilege escalation on student endpoints is now blocked: a student can no longer read another student's stats, sessions, or profile, nor activate or update another student's account, by passing a crafted studentId/id parameter.
+- All student-facing endpoints now rely solely on the JWT-derived identity established by src/middleware.ts.
+- Next actions: consider a follow-up sweep to (a) apply the same hardening pattern to admin/hod/lecturer routes that trust client-supplied IDs, and (b) clean up the pre-existing `.map((x: Record<string, unknown>) => ...)` typing pattern across the codebase (out of scope for this task).
+
+---
+Task ID: HARDEN-LECTURER
+Agent: General-purpose sub-agent
+Task: Harden lecturer API routes against horizontal privilege escalation
+
+Context:
+- New JWT middleware (`src/middleware.ts`) protects all `/api/*` routes, verifies a session
+  cookie, and enforces role-based access. For `/api/lecturer/*` it requires role `lecturer`
+  or `hod`. It injects authenticated user info into the request as `x-user-id`, `x-user-role`,
+  `x-user-email`, `x-user-name` headers.
+- `src/lib/auth-context.ts` exposes `getAuthUser(request)` which reads those headers and
+  returns `{ userId, role, email, name }` (or `null`).
+- Prior to this task, all lecturer routes trusted a client-supplied `lecturerId` (from query
+  string or request body), allowing one lecturer to read/modify another lecturer's data by
+  simply changing that parameter — a textbook horizontal privilege-escalation vulnerability.
+
+Work Log:
+Updated all 10 lecturer API route handlers to derive the lecturer identity from the
+authenticated session (via `getAuthUser(request).userId`) instead of trusting client input.
+No business logic, response shapes, or existing validation was modified — only the source of
+the lecturer identifier (plus ownership checks where the route targets a specific
+session/course/attendance that another lecturer might own).
+
+Files modified (all under `src/app/api/lecturer/`):
+
+1. `stats/route.ts` — GET: removed `lecturerId` query-param read; added 401 auth check;
+   uses `auth.userId`. Removed the now-unused `new URL(request.url)` line.
+
+2. `sessions/route.ts` —
+   - GET: replaced `lecturerId` query-param read with `auth.userId`; added 401 auth check.
+   - POST: removed `lecturerId` from destructured body; uses `auth.userId`; updated the
+     required-fields validation message to drop the `lecturerId` mention. Venue/department
+     concurrency guardrails, conflict response shape, and session-creation logic untouched.
+
+3. `end-session/route.ts` — POST: added 401 auth check at top. After fetching the session
+   by client-supplied `sessionId`, added ownership check:
+   `if (session.lecturer_id !== auth.userId) return 403 "You do not have permission to
+   access this session"`. Existing `status === 'active'` check and the absent-student
+   record-creation logic untouched.
+
+4. `courses/route.ts` — GET: replaced `lecturerId` query-param read with `auth.userId`;
+   added 401 auth check. Course/department/school join logic untouched.
+
+5. `review-queue/route.ts` — GET: replaced `lecturerId` query-param read with `auth.userId`;
+   added 401 auth check. Pending-review lookup, manual joins, and response shape untouched.
+
+6. `review-action/route.ts` — POST: added 401 auth check. After fetching the attendance
+   record by client-supplied `attendanceId`, added an ownership check by looking up the
+   parent session and verifying `sessionOwner.lecturer_id === auth.userId` (returns 403
+   otherwise). Existing `pending_review` status validation and approve/reject branching
+   untouched.
+
+7. `grading/route.ts` —
+   - GET: replaced `lecturerId` query-param read with `auth.userId`; added 401 auth check.
+     `semesterId` query param is still read from the URL.
+   - POST: added 401 auth check. Course-existence lookup now also selects `lecturer_id`,
+     and an ownership check `if (course.lecturer_id !== auth.userId) return 403` was added
+     before the upsert. Semester validation and DUPLICATE-key upsert fallback untouched.
+
+8. `analytics/route.ts` — GET: added 401 auth check at top. `sessionId` is still read
+   from the query string. After fetching the session, added ownership check
+   `if (session.lecturer_id !== auth.userId) return 403`. The rest of the rich join/stat
+   computation (target students, late arrivals, attendance breakdown, department joins)
+   is untouched.
+
+9. `export/route.ts` — GET: added 401 auth check at top. `courseId` and `semesterId` are
+   still read from the query string. After fetching the course, added ownership check
+   `if (course.lecturer_id !== auth.userId) return 403`. Student roster, session/grading
+   aggregation, and department-grouped export shape untouched.
+
+10. `profile/route.ts` —
+    - GET: replaced `lecturerId` query-param read with `auth.userId`; added 401 auth check.
+    - PUT: removed `id` from destructured body; uses `auth.userId` as `id`; removed the
+      `if (!id)` 400 check (no longer reachable — `auth.userId` is always present after the
+      auth guard). Password-change flow (verifyPassword / hashPassword) and the refetch-and-
+      return logic untouched.
+
+Verification:
+- Ran `npx tsc --noEmit --pretty` before and after the changes and diffed the output.
+- Lecturer-route error count was identical before and after (43 errors in both runs).
+- The remaining TypeScript errors in these files are PRE-EXISTING and unrelated to this
+  task: they are all of the form `(c: Record<string, unknown>) => string is not assignable
+  to parameter of type '(value: unknown, ...) => string'` on `.map()` callbacks over
+  `db.from(...).select(...)` results. They appear throughout the codebase (admin, hod,
+  auth/login routes have the same pattern). My added code did not introduce any new errors;
+  pre-existing errors merely shifted down by the number of lines the auth guard added above
+  them. Confirmed via line-number-agnostic diff which produced no added/removed entries.
+
+Stage Summary:
+- All 10 lecturer API routes now derive the lecturer identity from the JWT session via
+  `getAuthUser(request)`, eliminating the horizontal privilege-escalation vector.
+- Routes that operate on a specific session/course/attendance (end-session, review-action,
+  analytics, export, grading-POST) additionally verify object ownership against
+  `auth.userId` and return HTTP 403 on mismatch.
+- No response shapes, business logic, or pre-existing validation were changed.
+- `start-session/route.ts` was not in the task's scope and was left unchanged.
+
+Next Actions (suggested for follow-up):
+- Audit `src/app/api/lecturer/start-session/route.ts` (not in this task's list) — it likely
+  also accepts a `lecturerId` from the body and should be hardened the same way.
+- Audit the equivalent `student/*` and `hod/*` route handlers for the same vulnerability
+  pattern (trusting client-supplied IDs).
+- Consider fixing the codebase-wide pre-existing TS errors on `.map()` callbacks by typing
+  db results explicitly (out of scope for this security task).
+- Consider adding automated integration tests that assert a lecturer cannot access another
+  lecturer's session/analytics/export/profile via direct ID manipulation.
+
+---
+Task ID: HARDEN-HOD
+Agent: General-purpose sub agent
+Task: Harden HOD API routes to use authenticated user identity (not client-supplied IDs)
+
+Context:
+- A new JWT-verification middleware (src/middleware.ts) protects all /api/* routes
+  and sets x-user-id / x-user-role / x-user-email / x-user-name headers, with
+  role-based access (hod required for /api/hod/*).
+- A server-only helper src/lib/auth-context.ts exposes getAuthUser(request) which
+  reads those headers and returns { userId, role, email, name }.
+- Before this task, every HOD route trusted client-supplied `departmentId`
+  (or `lecturerId`) from the query/body — meaning any authenticated HOD could
+  read/write data for ANY department by simply passing a different departmentId.
+- The HOD is a lecturer row with is_hod=true and a hod_department_id column.
+  auth.userId is the lecturer's id.
+
+Work performed — all 6 HOD route handlers under src/app/api/hod/:
+
+1. stats/route.ts (GET)
+   - Replaced `searchParams.get('departmentId')` with auth-based lookup:
+     `db.from('lecturers').select('hod_department_id, department_id').eq('id', auth.userId)`,
+     using `hodLecturer.hod_department_id || hodLecturer.department_id`.
+   - Added 401 (no auth), 404 (HOD record missing), 403 (no department) early returns.
+   - FIXED the pre-existing global-session-count bug noted in the prior security
+     audit (worklog Task 1 §5 item 10): instead of
+     `db.from('sessions').select('status')` (returns ALL sessions system-wide),
+     the route now fetches session IDs linked to the HOD's department via
+     `session_departments` and counts `status='active'` only among those IDs.
+     If the department has no linked sessions, activeSessions stays 0.
+
+2. lecturers/route.ts (GET and POST)
+   - GET: replaced `searchParams.get('departmentId')` with the auth-based HOD
+     department lookup; lecturers list is now always scoped to the HOD's own
+     department.
+   - POST: removed `departmentId` and `schoolId` from the request body and
+     pulled both from the HOD's own lecturers row
+     (`select('hod_department_id, department_id, school_id')`). New lecturers
+     can now only ever be created in the HOD's own department/school.
+   - Existing validation (`validateLecturerFields`) preserved, now invoked with
+     the DB-derived IDs cast to string.
+   - PATCH and DELETE methods were left untouched (task scope was GET/POST).
+
+3. courses/route.ts (GET and POST)
+   - GET: replaced `searchParams.get('departmentId')` with auth-based lookup.
+   - POST: removed `departmentId` and `schoolId` from the request body; both
+     come from the HOD's lecturers row. The course_departments link inserted
+     after course creation also uses the HOD's departmentId.
+   - `lecturerId` is still read from the body (per task spec — only dept/school
+     come from the HOD record).
+   - `validateCourseFields` and `VALID_LEVELS` validation preserved, now invoked
+     with DB-derived IDs cast to string.
+   - PATCH and DELETE methods were left untouched (task scope was GET/POST).
+
+4. assign/route.ts (POST)
+   - Added auth lookup and HOD department resolution.
+   - Added explicit authorization check: queries `course_departments` for
+     `course_id = courseId AND department_id = hod's dept`. If no link exists
+     (i.e. the course doesn't belong to the HOD's department), returns 403
+     "Course does not belong to your department".
+   - Existing lecturer-existence and course-existence validation preserved.
+   - DELETE method was left untouched (task scope was POST).
+
+5. students/route.ts (GET)
+   - Replaced `searchParams.get('departmentId')` with the auth-based lookup.
+   - `level` query parameter still read from the URL (it's a filter, not an
+     authorization parameter) — kept unchanged.
+
+6. profile/route.ts (GET)
+   - Replaced `searchParams.get('lecturerId')` with `auth.userId`.
+   - Existing `if (!lecturer.is_hod)` check preserved (defensive — middleware
+     already enforces role=hod).
+
+Common pattern applied to all routes (per task spec):
+- Import `getAuthUser` from '@/lib/auth-context' (added alongside existing
+  imports; no existing imports removed).
+- Early `if (!auth) return 401` guard at the top of every handler.
+- Department resolved from `lecturers` table using `auth.userId`, choosing
+  `hod_department_id` first and falling back to `department_id`.
+- 404 if the HOD's lecturers row doesn't exist; 403 if no department is set.
+- No business logic, response shape, or existing validation was changed.
+
+TypeScript verification:
+- Ran `npx tsc --noEmit --pretty`. Before changes, the 6 HOD route files had
+  5 pre-existing TS errors (all caused by `(arr || []).map((x: Record<string,
+  unknown>) => ...)` callbacks on `unknown[]` from the PostgREST client, plus
+  a `let x = null` narrowing issue in profile/route.ts).
+- My changes initially introduced 3 NEW errors:
+    * courses/route.ts:110 — `validateCourseFields` got `unknown` instead of
+      `string` for schoolId/departmentId.
+    * lecturers/route.ts:104 — same issue with `validateLecturerFields`.
+    * stats/route.ts:66 — `.map((sd: Record<string, unknown>) => ...)` callback
+      on `unknown[]`.
+- Fixed all three with `as string` casts (validate* calls) and an
+  `as Record<string, unknown>[]` cast before `.map()`.
+- Also fixed the 5 pre-existing HOD-route TS errors with the same
+  `as Record<string, unknown>[]` cast pattern (and by typing
+  `let department: Record<string, unknown> | null = null` in profile/route.ts)
+  so the HOD route directory is now fully type-clean.
+- Final `npx tsc --noEmit --pretty 2>&1 | grep "src/app/api/hod/"` returns 0
+  errors. Remaining errors elsewhere in the repo (admin/, lecturer/, auth/login)
+  are pre-existing patterns unrelated to this task.
+
+Files modified:
+- src/app/api/hod/stats/route.ts
+- src/app/api/hod/lecturers/route.ts
+- src/app/api/hod/courses/route.ts
+- src/app/api/hod/assign/route.ts
+- src/app/api/hod/students/route.ts
+- src/app/api/hod/profile/route.ts
+
+Stage Summary:
+- All HOD API routes now derive the acting HOD's identity and department from
+  the JWT-authenticated `auth.userId` rather than trusting client-supplied
+  `departmentId` / `lecturerId` parameters. Cross-department access is no
+  longer possible from these endpoints. ✅
+- HOD stats no longer leaks a global active-session count — it only counts
+  sessions linked to the HOD's department via session_departments. ✅
+- HOD create-lecturer and create-course can only ever insert rows scoped to
+  the HOD's own department_id / school_id. ✅
+- HOD assign-lecturer explicitly verifies the target course belongs to the
+  HOD's department via course_departments before mutating. ✅
+- HOD route directory passes `npx tsc --noEmit` with zero errors. ✅
+
+Notes / Follow-ups:
+- PATCH and DELETE methods on hod/lecturers, hod/courses, and hod/assign were
+  intentionally NOT modified because the task spec explicitly listed only the
+  GET/POST methods per route. They still accept arbitrary lecturerId/courseId
+  from the client and perform no department-membership check. A future hardening
+  pass should add the same `course_departments` / `lecturers.department_id`
+  verification to those methods so a malicious HOD cannot PATCH/DELETE resources
+  in another department.
+- The remaining pre-existing TS errors in admin/*, lecturer/*, and
+  auth/login/route.ts use the same `(arr || []).map((x: Record<string,
+  unknown>) => ...)` pattern and could be batch-fixed in a separate sweep.

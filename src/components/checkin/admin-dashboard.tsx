@@ -251,8 +251,8 @@ export function AdminDashboard() {
     fetchVenues();
   }, [fetchStats, fetchDepartments, fetchStudents, fetchLecturers, fetchVenues]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     toast.success('Logged out successfully');
   };
 

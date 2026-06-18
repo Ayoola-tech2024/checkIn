@@ -1,9 +1,17 @@
 // ============================================================
 // checkIn - InsForge Database Client (PostgREST API)
 // ============================================================
+// SECURITY: This module must NEVER be imported by client-side code.
+// The API key uses a server-only env var (no NEXT_PUBLIC_ prefix)
+// so it is never inlined into the browser bundle. Only API route
+// handlers (server-side) import this module.
 
-const INSFORGE_URL = process.env.NEXT_PUBLIC_INSFORGE_URL || 'https://9djdhppd.us-east.insforge.app';
-const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY || 'ik_39c8cf61aaa8029228324329603f0f49';
+const INSFORGE_URL = process.env.INSFORGE_URL || 'https://9djdhppd.us-east.insforge.app';
+const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY;
+
+if (!INSFORGE_API_KEY) {
+  throw new Error('INSFORGE_API_KEY environment variable is required (server-side).');
+}
 
 // PostgREST-compatible fetch wrapper for InsForge
 class InsForgeClient {

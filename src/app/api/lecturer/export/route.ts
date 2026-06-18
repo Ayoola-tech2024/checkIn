@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const courseId = searchParams.get('courseId');
     const semesterId = searchParams.get('semesterId');
@@ -24,6 +33,14 @@ export async function GET(request: NextRequest) {
     }
 
     const course = courses[0] as Record<string, unknown>;
+
+    // Verify ownership: the course must belong to the authenticated lecturer
+    if (course.lecturer_id !== auth.userId) {
+      return NextResponse.json(
+        { success: false, error: 'You do not have permission to access this course' },
+        { status: 403 }
+      );
+    }
 
     // Get course_departments
     const { data: courseDepts } = await db

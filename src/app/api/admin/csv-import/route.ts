@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { hashPassword, generateDefaultPassword } from '@/lib/auth';
-import { SLIT_SCHOOL_ID, VALID_LEVELS } from '@/lib/constants';
+import { SLIT_SCHOOL_ID, VALID_LEVELS, SLIT_DEPT_NAMES, SLIT_DEPT_CODES } from '@/lib/constants';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,28 +56,31 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Find or create department
-        let department = deptMap.get(row.department.toLowerCase());
+        // SECURITY: Only allow SLIT departments — reject non-SLIT names/codes.
+        const deptInput = row.department.trim();
+        const isSlitDeptName = SLIT_DEPT_NAMES.some(
+          (n) => n.toLowerCase() === deptInput.toLowerCase()
+        );
+        const isSlitDeptCode = SLIT_DEPT_CODES.some(
+          (c) => c.toLowerCase() === deptInput.toLowerCase()
+        );
 
-        if (!department) {
-          const code = row.department.substring(0, 4).toUpperCase().replace(/\s/g, '');
-          const { data: newDepts } = await db
-            .from('departments')
-            .insert({ name: row.department, code, school_id: SLIT_SCHOOL_ID })
-            .select();
-          department = (newDepts?.[0] as Record<string, unknown>) || null;
-
-          if (department) {
-            deptMap.set(row.department.toLowerCase(), department);
-            if (department.code) {
-              deptMap.set((department.code as string).toLowerCase(), department);
-            }
-          }
+        if (!isSlitDeptName && !isSlitDeptCode) {
+          skipped++;
+          errors.push(
+            `Skipped: "${deptInput}" is not a valid SLIT department for ${row.matricNumber}. Valid departments: ${SLIT_DEPT_CODES.join(', ')}`
+          );
+          continue;
         }
+
+        // Find department in the pre-fetched map (by name or code)
+        let department = deptMap.get(deptInput.toLowerCase());
 
         if (!department) {
           skipped++;
-          errors.push(`Error: Could not create/find department for ${row.matricNumber}`);
+          errors.push(
+            `Skipped: Department "${deptInput}" is valid but not yet created in the system. Please create it first via the Departments tab. (Student: ${row.matricNumber})`
+          );
           continue;
         }
 

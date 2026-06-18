@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const studentId = searchParams.get('studentId');
-
-    if (!studentId) {
+    const auth = getAuthUser(request);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: 'Student ID is required' },
-        { status: 400 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
+
+    // SECURITY: Use the authenticated student's ID, not a client-supplied one.
+    const studentId = auth.userId;
 
     // Get all attendance records for this student
     const { data: attendances } = await db.from('attendances').select('*').eq('student_id', studentId);

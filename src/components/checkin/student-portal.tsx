@@ -492,8 +492,8 @@ function ActivePortal() {
     [fetchSessions, fetchStats]
   );
 
-  const handleLogout = useCallback(() => {
-    logout();
+  const handleLogout = useCallback(async () => {
+    await logout();
     toast.info('Logged out successfully');
   }, [logout]);
 

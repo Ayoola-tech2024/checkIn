@@ -433,7 +433,7 @@ export function HodPortal() {
             <XCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
             <h2 className="text-xl font-bold mb-2">No Department Assigned</h2>
             <p className="text-muted-foreground">Your account is not linked to a department. Please contact the admin.</p>
-            <Button className="mt-4" onClick={logout}>Sign Out</Button>
+            <Button className="mt-4" onClick={() => logout()}>Sign Out</Button>
           </CardContent>
         </Card>
       </div>
@@ -463,7 +463,7 @@ export function HodPortal() {
               {user?.name}
             </Button>
             <ThemeToggle className="h-9 w-9" />
-            <Button variant="ghost" size="icon" onClick={logout}>
+            <Button variant="ghost" size="icon" onClick={() => logout()}>
               <LogOut className="size-4" />
             </Button>
           </div>

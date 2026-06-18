@@ -1,16 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { hashPassword } from '@/lib/auth';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // SECURITY: Use the authenticated student's ID, not a client-supplied one.
+    const studentId = auth.userId;
+
     const body = await request.json();
-    const { studentId, email, password, facialData, selfieData } = body;
+    const { email, password, facialData, selfieData } = body;
 
     // Validate required fields
-    if (!studentId || !email || !password) {
+    if (!email || !password) {
       return NextResponse.json(
-        { success: false, error: 'Student ID, email, and password are required' },
+        { success: false, error: 'Email and password are required' },
         { status: 400 }
       );
     }

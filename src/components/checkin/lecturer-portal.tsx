@@ -562,32 +562,25 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
   const [ending, setEnding] = useState(false);
   const [showLiveMonitor, setShowLiveMonitor] = useState(false);
 
-  const handleStartSession = async (useVenueFallback = false) => {
+  const handleStartSession = async () => {
     setStarting(true);
     try {
       let body: Record<string, unknown>;
 
-      if (useVenueFallback) {
-        // Use venue coordinates when GPS is unavailable
+      try {
+        const pos = await getCurrentPosition();
         body = {
           sessionId: session.id,
-          useVenueLocation: true,
+          lecturerLat: pos.latitude,
+          lecturerLng: pos.longitude,
         };
-      } else {
-        try {
-          const pos = await getCurrentPosition();
-          body = {
-            sessionId: session.id,
-            lecturerLat: pos.latitude,
-            lecturerLng: pos.longitude,
-          };
-        } catch {
-          // GPS failed — automatically fall back to venue location
-          body = {
-            sessionId: session.id,
-            useVenueLocation: true,
-          };
-        }
+      } catch {
+        // GPS failed — require real GPS, no venue fallback.
+        toast.error(
+          'GPS location is required to start a session. Please enable location services and try again.'
+        );
+        setStarting(false);
+        return;
       }
 
       const res = await fetch('/api/lecturer/start-session', {
@@ -597,12 +590,7 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
       });
       const json = await res.json();
       if (json.success) {
-        const usedVenue = json.data?.usedVenueLocation;
-        toast.success(
-          usedVenue
-            ? 'Session started (using venue location — GPS unavailable)'
-            : 'Session started successfully'
-        );
+        toast.success('Session started successfully');
         onRefresh();
       } else {
         toast.error(json.error || 'Failed to start session');
@@ -704,9 +692,9 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
                 <Button
                   size="sm"
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={() => handleStartSession(false)}
+                  onClick={handleStartSession}
                   disabled={starting}
-                  title="Start with GPS location"
+                  title="Start with GPS location (required)"
                 >
                   {starting ? (
                     <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
@@ -714,17 +702,6 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
                     <Play className="mr-1 h-3.5 w-3.5" />
                   )}
                   Start
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleStartSession(true)}
-                  disabled={starting}
-                  title="Start using venue location (for demo/sandbox)"
-                  className="text-xs"
-                >
-                  <MapPin className="mr-1 h-3 w-3" />
-                  Venue
                 </Button>
               </div>
             )}
@@ -1051,8 +1028,8 @@ export function LecturerPortal() {
     };
   }, [sessions, fetchSessions, fetchStats]);
 
-  const handleLogout = useCallback(() => {
-    logout();
+  const handleLogout = useCallback(async () => {
+    await logout();
     toast.info('Logged out successfully');
   }, [logout]);
 

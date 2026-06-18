@@ -1,13 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function POST(request: NextRequest) {
   try {
-    const { sessionId, lecturerLat, lecturerLng, useVenueLocation } = await request.json();
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { sessionId, lecturerLat, lecturerLng } = await request.json();
 
     if (!sessionId) {
       return NextResponse.json(
         { success: false, error: 'Session ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // SECURITY: Require real GPS coordinates — no venue fallback.
+    if (lecturerLat === undefined || lecturerLng === undefined || isNaN(parseFloat(lecturerLat)) || isNaN(parseFloat(lecturerLng))) {
+      return NextResponse.json(
+        { success: false, error: 'GPS coordinates are required to start a session. Please enable location services.' },
         { status: 400 }
       );
     }
@@ -23,6 +37,14 @@ export async function POST(request: NextRequest) {
 
     const session = sessions[0] as Record<string, unknown>;
 
+    // SECURITY: Verify the authenticated lecturer owns this session.
+    if (session.lecturer_id !== auth.userId) {
+      return NextResponse.json(
+        { success: false, error: 'You do not have permission to start this session' },
+        { status: 403 }
+      );
+    }
+
     if (session.status !== 'scheduled') {
       return NextResponse.json(
         { success: false, error: `Session cannot be started. Current status: ${session.status}` },
@@ -30,31 +52,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let finalLat: number;
-    let finalLng: number;
-
-    if (lecturerLat !== undefined && lecturerLng !== undefined) {
-      // Use lecturer's real GPS coordinates (required for production)
-      finalLat = parseFloat(lecturerLat);
-      finalLng = parseFloat(lecturerLng);
-    } else {
-      // No GPS provided - try venue coordinates as fallback
-      const { data: venues } = await db
-        .from('venues')
-        .select('latitude, longitude')
-        .eq('id', session.venue_id as string);
-
-      if (!venues || venues.length === 0 || !(venues[0] as Record<string, unknown>).latitude) {
-        return NextResponse.json(
-          { success: false, error: 'GPS coordinates are required to start a session. Please enable location services.' },
-          { status: 400 }
-        );
-      }
-
-      const venue = venues[0] as Record<string, unknown>;
-      finalLat = venue.latitude as number;
-      finalLng = venue.longitude as number;
-    }
+    const finalLat = parseFloat(lecturerLat);
+    const finalLng = parseFloat(lecturerLng);
 
     const now = new Date();
     const endsAt = new Date(now.getTime() + (session.duration_minutes as number) * 60000);
@@ -86,7 +85,6 @@ export async function POST(request: NextRequest) {
       lecturer_lng: finalLng,
     };
 
-    // Fetch course and venue info
     const [courseResult, venueResult] = await Promise.all([
       db.from('courses').select('id, name, code').eq('id', session.course_id as string),
       db.from('venues').select('id, name').eq('id', session.venue_id as string),
@@ -107,7 +105,6 @@ export async function POST(request: NextRequest) {
         lecturerLng: finalLng,
         courseName: course?.name,
         venueName: venue?.name,
-        usedVenueLocation: lecturerLat === undefined,
       },
     });
   } catch (error) {

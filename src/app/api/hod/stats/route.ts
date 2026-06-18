@@ -4,14 +4,28 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const departmentId = searchParams.get('departmentId');
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
+    // Look up the HOD's department from the database using auth.userId.
+    // Never trust a client-supplied departmentId.
+    const { data: hodLecturers } = await db
+      .from('lecturers')
+      .select('hod_department_id, department_id')
+      .eq('id', auth.userId);
+    if (!hodLecturers || hodLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'HOD record not found' }, { status: 404 });
+    }
+    const hodLecturer = hodLecturers[0] as Record<string, unknown>;
+    const departmentId = hodLecturer.hod_department_id || hodLecturer.department_id;
     if (!departmentId) {
-      return NextResponse.json({ success: false, error: 'Department ID is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'No department assigned to this HOD' }, { status: 403 });
     }
 
     // Count lecturers
@@ -41,9 +55,21 @@ export async function GET(request: NextRequest) {
       studentsByLevel[lvl] = (studentsByLevel[lvl] || 0) + 1;
     }
 
-    // Count active sessions for courses in this department
-    const { data: sessions } = await db.from('sessions').select('status');
-    const activeSessions = (sessions || []).filter(s => (s as Record<string, unknown>).status === 'active').length;
+    // Count active sessions for courses in this department.
+    // Fetch session IDs linked to this department via session_departments,
+    // then count active sessions among them (avoids counting global sessions).
+    const { data: sessionDeptLinks } = await db
+      .from('session_departments')
+      .select('session_id')
+      .eq('department_id', departmentId as string);
+    const sessionIds = ((sessionDeptLinks || []) as Record<string, unknown>[])
+      .map((sd) => sd.session_id as string)
+      .filter(Boolean);
+    let activeSessions = 0;
+    if (sessionIds.length > 0) {
+      const { data: deptSessions } = await db.from('sessions').select('status').in('id', sessionIds);
+      activeSessions = (deptSessions || []).filter(s => (s as Record<string, unknown>).status === 'active').length;
+    }
 
     return NextResponse.json({
       success: true,

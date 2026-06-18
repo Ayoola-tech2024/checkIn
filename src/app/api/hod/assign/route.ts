@@ -4,9 +4,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { courseId, lecturerId } = body;
 
@@ -14,6 +20,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Course ID and Lecturer ID are required' },
         { status: 400 }
+      );
+    }
+
+    // Look up the HOD's department from the database using auth.userId.
+    const { data: hodLecturers } = await db
+      .from('lecturers')
+      .select('hod_department_id, department_id')
+      .eq('id', auth.userId);
+    if (!hodLecturers || hodLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'HOD record not found' }, { status: 404 });
+    }
+    const hodLecturer = hodLecturers[0] as Record<string, unknown>;
+    const departmentId = hodLecturer.hod_department_id || hodLecturer.department_id;
+    if (!departmentId) {
+      return NextResponse.json({ success: false, error: 'No department assigned to this HOD' }, { status: 403 });
+    }
+
+    // Verify the course belongs to the HOD's department via course_departments.
+    const { data: courseDeptLinks } = await db
+      .from('course_departments')
+      .select('course_id, department_id')
+      .eq('course_id', courseId)
+      .eq('department_id', departmentId as string);
+    if (!courseDeptLinks || courseDeptLinks.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Course does not belong to your department' },
+        { status: 403 }
       );
     }
 

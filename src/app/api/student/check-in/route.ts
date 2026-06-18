@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { haversineDistance } from '@/lib/geo';
 import { calculateSimilarity, getAttendanceStatusFromSimilarity } from '@/lib/face-utils';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // SECURITY: Use the authenticated student's ID, not a client-supplied one.
+    const studentId = auth.userId;
     const {
-      studentId,
       sessionId,
       studentLat,
       studentLng,
@@ -14,9 +21,9 @@ export async function POST(request: NextRequest) {
       selfieData,
     } = await request.json();
 
-    if (!studentId || !sessionId || studentLat === undefined || studentLng === undefined || !facialDescriptor) {
+    if (!sessionId || studentLat === undefined || studentLng === undefined || !facialDescriptor) {
       return NextResponse.json(
-        { success: false, error: 'Student ID, session ID, coordinates, and facial descriptor are required' },
+        { success: false, error: 'Session ID, coordinates, and facial descriptor are required' },
         { status: 400 }
       );
     }
@@ -80,35 +87,26 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== TIER 1: Location Validation =====
-    let lecturerLat = session.lecturer_lat as number | null;
-    let lecturerLng = session.lecturer_lng as number | null;
+    // SECURITY: No venue fallback. The lecturer MUST have provided real GPS
+    // when starting the session. If lecturer_lat is null, the session
+    // was not properly started — reject the check-in.
+    const lecturerLat = session.lecturer_lat as number | null;
+    const lecturerLng = session.lecturer_lng as number | null;
 
     if (lecturerLat === null || lecturerLng === null) {
-      // Try to get venue coordinates as fallback
-      const { data: venues } = await db
-        .from('venues')
-        .select('latitude, longitude')
-        .eq('id', session.venue_id as string);
-
-      if (venues && venues.length > 0) {
-        const venue = venues[0] as Record<string, unknown>;
-        lecturerLat = venue.latitude as number;
-        lecturerLng = venue.longitude as number;
-      }
-    }
-
-    let distance = 0;
-    let isWithinLocation = true;
-
-    if (lecturerLat !== null && lecturerLng !== null) {
-      distance = haversineDistance(
-        studentLat,
-        studentLng,
-        lecturerLat,
-        lecturerLng
+      return NextResponse.json(
+        { success: false, error: 'Session location not available. The lecturer must start the session with GPS enabled.' },
+        { status: 400 }
       );
-      isWithinLocation = distance <= (session.distance_threshold as number);
     }
+
+    const distance = haversineDistance(
+      studentLat,
+      studentLng,
+      lecturerLat,
+      lecturerLng
+    );
+    const isWithinLocation = distance <= (session.distance_threshold as number);
 
     if (!isWithinLocation) {
       // Location check failed - record as rejected_location

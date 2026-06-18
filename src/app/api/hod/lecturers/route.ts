@@ -6,14 +6,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { hashPassword, generateDefaultPassword } from '@/lib/auth';
 import { validateLecturerFields } from '@/lib/slit-validation';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const departmentId = searchParams.get('departmentId');
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
+    // Look up the HOD's department from the database using auth.userId.
+    // Never trust a client-supplied departmentId.
+    const { data: hodLecturers } = await db
+      .from('lecturers')
+      .select('hod_department_id, department_id')
+      .eq('id', auth.userId);
+    if (!hodLecturers || hodLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'HOD record not found' }, { status: 404 });
+    }
+    const hodLecturer = hodLecturers[0] as Record<string, unknown>;
+    const departmentId = hodLecturer.hod_department_id || hodLecturer.department_id;
     if (!departmentId) {
-      return NextResponse.json({ success: false, error: 'Department ID is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'No department assigned to this HOD' }, { status: 403 });
     }
 
     const { data: lecturers, error } = await db
@@ -28,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     // For each lecturer, fetch their courses
     const lecturersWithCourses = await Promise.all(
-      (lecturers || []).map(async (lect: Record<string, unknown>) => {
+      ((lecturers || []) as Record<string, unknown>[]).map(async (lect) => {
         const { data: courses } = await db.from('courses').select('id, name, code, level').eq('lecturer_id', lect.id as string);
         return {
           id: lect.id,
@@ -51,18 +65,43 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { name, email, departmentId, schoolId } = body;
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!name || !email || !departmentId || !schoolId) {
+    const body = await request.json();
+    const { name, email } = body;
+
+    if (!name || !email) {
       return NextResponse.json(
-        { success: false, error: 'Name, email, department, and school are required' },
+        { success: false, error: 'Name and email are required' },
         { status: 400 }
       );
     }
 
+    // Look up the HOD's department and school from the database using auth.userId.
+    // The new lecturer is created in the HOD's own department — never trust
+    // client-supplied departmentId/schoolId.
+    const { data: hodLecturers } = await db
+      .from('lecturers')
+      .select('hod_department_id, department_id, school_id')
+      .eq('id', auth.userId);
+    if (!hodLecturers || hodLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'HOD record not found' }, { status: 404 });
+    }
+    const hodLecturer = hodLecturers[0] as Record<string, unknown>;
+    const departmentId = hodLecturer.hod_department_id || hodLecturer.department_id;
+    const schoolId = hodLecturer.school_id;
+    if (!departmentId) {
+      return NextResponse.json({ success: false, error: 'No department assigned to this HOD' }, { status: 403 });
+    }
+    if (!schoolId) {
+      return NextResponse.json({ success: false, error: 'No school assigned to this HOD' }, { status: 403 });
+    }
+
     // Validate
-    const validation = validateLecturerFields({ schoolId, departmentId });
+    const validation = validateLecturerFields({ schoolId: schoolId as string, departmentId: departmentId as string });
     if (!validation.valid) {
       return NextResponse.json({ success: false, error: validation.errors.join(', ') }, { status: 400 });
     }

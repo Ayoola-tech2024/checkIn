@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const { sessionId } = await request.json();
 
     if (!sessionId) {
@@ -22,6 +31,14 @@ export async function POST(request: NextRequest) {
     }
 
     const session = sessions[0] as Record<string, unknown>;
+
+    // Verify ownership: session must belong to the authenticated lecturer
+    if (session.lecturer_id !== auth.userId) {
+      return NextResponse.json(
+        { success: false, error: 'You do not have permission to access this session' },
+        { status: 403 }
+      );
+    }
 
     if (session.status !== 'active') {
       return NextResponse.json(
