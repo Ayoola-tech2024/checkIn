@@ -781,3 +781,282 @@ Stage Summary (key ground-truth findings):
 - LIVENESS: NONE. No blink/head-pose/depth challenge. A webcam-mediated photo attack trivially defeats the "live camera only" security comment.
 
 No code was modified. Pure audit. Findings delivered to user as consolidated [WORKING]/[PARTIAL-VULNERABLE]/[UNWRITTEN-STUBBED] report.
+
+---
+Task ID: P5-3-LIVENESS
+Agent: General-purpose (anti-spoofing EAR blink)
+Task: Phase 5.3 — Eye Aspect Ratio blink detection liveness challenge in face-capture.tsx
+
+Work Log:
+- Read worklog.md (Phases 1–4 history + AUDIT-CONSOLIDATED findings) and
+  read src/components/checkin/face-capture.tsx in full to map the existing
+  state machine (status, lastLandmarks), the camera/FaceMesh lifecycle
+  (loadFaceMesh, startCamera, stopCamera, onResults, handleCapture,
+  handleConfirm, handleReset), and the JSX layout (camera view, status
+  overlay, captured preview, Capture button, error alert, instructions).
+- Confirmed `Eye` and `EyeOff` icons exist in the installed lucide-react
+  (verified against node_modules/lucide-react type declarations) so no new
+  dependency is needed.
+- Added module-scope EAR constants and helper:
+    * RIGHT_EYE_IDX = [33, 160, 158, 133, 153, 144]
+    * LEFT_EYE_IDX  = [362, 385, 387, 263, 373, 380]
+    * EAR_THRESHOLD = 0.20, BLINK_MIN_MS = 50, BLINK_MAX_MS = 400,
+      BLINK_TIMEOUT_MS = 5000, REQUIRED_BLINKS = 2
+    * computeEar(landmarks, idx) — pure function, direct landmark index
+      access (no array allocations in the hot loop), 2D x/y only, returns
+      -1 on missing landmarks so the frame is skipped instead of
+      false-triggering a blink.
+  Formula (Soukupova & Cech, 2016):
+      EAR = (||p2-p6|| + ||p3-p5||) / (2 * ||p1-p4||)
+  with p1=outer corner, p2/p3=upper lid, p4=inner corner, p5/p6=lower lid.
+  EAR is computed for both eyes and averaged.
+- Added anti-spoofing blink state inside the component:
+    * blinkCount (useState) — UI mirror for re-renders only.
+    * blinkCountRef, isEyeClosedRef, eyeClosedAtRef, lastBlinkTimeRef —
+      refs are the source of truth for the per-frame state machine so
+      onResults (memoised with `[]` deps) never reads stale closures.
+- Extended onResults with the blink state machine, run only when a face is
+  present and both EARs computed successfully:
+    * 5-second inactivity reset (only fires BEFORE liveness is reached, so
+      a verified user pausing before pressing Capture isn't penalised).
+    * Open→closed transition (EAR >= threshold then < threshold) records
+      eyeClosedAt = performance.now().
+    * Closed→open transition evaluates duration; counts as a blink iff
+      50ms <= dur <= 400ms (rejects micro-flickers and long holds).
+    * On blink, blinkCountRef++ and setBlinkCount mirror updates.
+    * When the face is lost (multiFaceLandmarks empty), isEyeClosedRef
+      and eyeClosedAtRef are reset so a stale close→open transition isn't
+      miscounted when the face reappears.
+- Updated handleReset to also reset blinkCount, blinkCountRef,
+  isEyeClosedRef, eyeClosedAtRef, lastBlinkTimeRef — a re-capture
+  requires fresh blinks (no replay of a previously-verified liveness
+  session).
+- Updated the UI:
+    * Added a liveness check indicator below the camera view, visible
+      during detecting/face-found/no-face. Uses lucide `EyeOff` (amber)
+      while pending with text "Blink twice to verify you are real
+      (N/2 blinks detected)" and switches to `Eye` (emerald) with
+      "Liveness verified — you may capture your face." once 2 blinks
+      are reached.
+    * Split the Capture button into two mutually exclusive variants:
+        - status === 'face-found' && blinkCount < 2 → disabled, grayed
+          out (opacity-60), label "Capture Face (blink to enable)".
+        - status === 'face-found' && blinkCount >= 2 → enabled, calls
+          handleCapture, label "Capture Face".
+      The Capture button is therefore NEVER clickable until liveness is
+      verified.
+    * Added "Blink naturally twice to verify you are real" to the
+      instructions list.
+- Preserved all existing behaviour:
+    * The "✓ Face Detected" canvas overlay still draws.
+    * The face-oval mesh overlay still draws.
+    * onCapture signature unchanged: { selfieData: string;
+      facialDescriptor: number[] }.
+    * handleCapture still uses lastLandmarks + canvas selfie; no change
+      to descriptor extraction or compression.
+- Ran `bunx eslint src/components/checkin/face-capture.tsx` → EXIT 0
+  (zero errors, zero warnings on the modified file). The only project-
+  wide lint error is in src/hooks/use-online-status.ts (an untracked
+  pre-existing file from a prior Phase 5.x session) which I am
+  forbidden to touch per the task constraints.
+
+Stage Summary:
+- Key changes: EAR computation helper + module-scope constants, per-frame
+  blink state machine driven by refs (no stale-closure risk), liveness
+  UI indicator (Eye/EyeOff), disabled-then-enabled Capture button gated
+  on blinkCount >= 2, handleReset blink-state reset, instructions update.
+- EAR threshold used: 0.20 (open-eye EAR ~0.30, closed-eye EAR ~0.10).
+- Blinks required: 2 natural blinks, each with closed-phase duration in
+  the 50–400 ms range; 5-second inactivity reset (pre-verification only).
+- Caveats:
+    * This is a behavioural liveness check (blink challenge). It defeats
+      static printed-photo and screen-replay attacks where the attacker
+      doesn't blink naturally within the time window, but a determined
+      attacker with a short looping video that includes blinks could
+      still pass. A stronger follow-up would add a randomised challenge
+      (e.g. "look left", "smile") or 3D depth analysis.
+    * The 0.20 threshold is the literature default for frontal 2D
+      landmarks but may need per-deployment tuning for users with
+      naturally narrow eyes or strong prescription glasses.
+    * `onResults` runs every frame; the EAR computation is O(1) with no
+      allocations, but MediaPipe FaceMesh itself remains the dominant
+      per-frame cost.
+    * Lint passes on the modified file. Project-wide `bun run lint`
+      still reports 1 pre-existing error in src/hooks/use-online-status.ts
+      (untouched, out of scope).
+
+---
+Task ID: P5-1-OFFLINE
+Agent: General-purpose (offline cache layer)
+Task: Phase 5.1 — Store-and-Forward Offline Cache for student check-ins (IndexedDB + online replay)
+
+Work Log:
+- Read worklog.md to understand Phases 1-4 remediation context (security hardening, biometrics, geo, audit findings).
+- Reviewed existing code: src/components/checkin/check-in-flow.tsx (network-error catch block at lines 186-192), src/components/checkin/student-portal.tsx (ActivePortal component, header + <main> layout), src/app/api/student/check-in/route.ts (server stamps check_in_time from its own clock — noted that offline-replayed check-ins will get server's "now" timestamp; cryptographic timestamp validation is Phase 5.2, out of scope).
+- Added `idb@8.0.3` dependency via `bun add idb` (only external lib added; no other deps introduced).
+- Created src/lib/offline.ts (client-only IndexedDB cache):
+  * DB name `checkin-offline`, version 1, single object store `pendingCheckins` (keyPath `id`, auto-increment, indexes on `sessionId` and `studentId`).
+  * Record shape exactly as specified: { id?, sessionId, studentId, studentLat, studentLng, facialDescriptor: number[], selfieData: string, capturedAt: string (ISO) }.
+  * Exports: queueCheckIn(payload) → returns stored record (with auto-incremented id) or null; getAllPendingCheckIns() → array sorted oldest-first; deletePendingCheckIn(id) → boolean; getPendingCheckInCount() → number.
+  * All functions wrap in try/catch, return null/empty/0 on failure, and short-circuit when `window`/`indexedDB` are undefined (SSR / private mode). DB connection is cached in a module-level promise with a self-clearing catch handler so a one-time openDB failure is retried on next call.
+- Created src/hooks/use-online-status.ts (client hook):
+  * Returns `{ isOnline: boolean }` via `useSyncExternalStore` (the React-recommended primitive for external mutable state). SSR-safe — server snapshot returns `true` to match the initial client render and avoid hydration mismatches. Subscribes to both `online` and `offline` window events; listener cleanup is automatic.
+  * Initial implementation used `useEffect` + `useState(navigator.onLine)`, but `bun run lint` flagged it with `react-hooks/set-state-in-effect` ("Calling setState synchronously within an effect can trigger cascading renders"). Switched to `useSyncExternalStore` which is the idiomatic, lint-clean fix and also eliminates the hydration-mismatch risk.
+- Created src/components/checkin/offline-banner.tsx (client component, named export `OfflineBanner`):
+  * Uses `useOnlineStatus` + `getPendingCheckInCount()` (queried on mount and on every `online` event so the pending-sync badge stays accurate after replays).
+  * Renders a small amber shadcn `Alert` (variant default, amber border/bg classes) only when offline OR pendingCount > 0; returns null otherwise (unobtrusive — no banner when fully online and nothing queued).
+  * Three copy variants: offline-only, offline-with-pending, online-with-pending. Uses WifiOff / CloudUpload lucide icons.
+- Modified src/components/checkin/check-in-flow.tsx (catch block only):
+  * Added `import { queueCheckIn } from '@/lib/offline'`.
+  * In the `handleFaceCapture` catch block (was lines 186-192), BEFORE the toast.error, attempt `queueCheckIn({...})` with the exact payload shape from the spec (sessionId, studentId, studentLat, studentLng, facialDescriptor, selfieData, capturedAt).
+  * If queue succeeds: show a SUCCESS toast ("You are offline. Your check-in has been queued and will be submitted automatically when you reconnect.") and `setStep('result')` with a `checkInResult` of `{ success: true, stage: 'complete', message: 'Queued offline — will sync when online.', status: 'present' }`. Used the existing `status: 'present'` AttendanceStatus so no new status type was needed (per the spec's "keep it simple" guidance).
+  * If queue fails (IndexedDB unavailable / write error): fall back to the original toast.error('Network error. Please check your connection and try again.') and setFaceCaptureError.
+  * The existing fetch logic in the try block was NOT touched — only the catch block was modified.
+- Wired up OfflineBanner + replay logic in src/components/checkin/student-portal.tsx (ActivePortal component):
+  * Added imports: `OfflineBanner` component and `getAllPendingCheckIns` / `deletePendingCheckIn` from `@/lib/offline`.
+  * Rendered `<OfflineBanner />` inside the main container, at the top of `<main>` (right after the header), per the spec.
+  * Added a `replayPendingCheckIns` useCallback that: checks `navigator.onLine` (bails if offline) and a `replayingRef` (prevents concurrent invocations); fetches all pending items; if any, shows `toast.info(`Replaying ${N} queued check-in(s)...`)`; for each item POSTs to `/api/student/check-in` (relative path) with the queued payload; treats HTTP < 500 as "processed" (deletes from queue — this covers 2xx success, 4xx rejections like rejected_location/rejected_identity, 409 already-checked-in, and 400 session-not-active, all of which mean the server has the record and retrying won't change anything); HTTP >= 500 and network errors are kept in the queue for the next attempt and counted as failures. After the loop: `toast.success('All queued check-ins synced!')` if failures === 0, else `toast.error(`Failed to sync ${failures} check-in(s)`)`. Calls `fetchSessions()` + `fetchStats()` after to refresh the UI.
+  * Added a useEffect that registers `replayPendingCheckIns` as the `online` event listener (with cleanup on unmount) AND calls it once on mount (covers the edge case where the student closed/reopened the tab while online with items still queued from a prior offline session — the spec only required the online-event listener, but the mount drain is a low-cost robustness add and runs only when `navigator.onLine` is true).
+- Ran `bun run lint` — initially failed on the use-online-status.ts set-state-in-effect rule; fixed by switching to `useSyncExternalStore`. Final `bun run lint` passes with zero errors. Also ran `bunx tsc --noEmit` and resolved a type error in offline.ts (dbPromise type widened to `Promise<IDBPDatabase<CheckInOfflineDB> | null> | null` to accommodate the `.catch` branch returning null).
+- Verified the server route src/app/api/student/check-in/route.ts is unchanged — server uses `auth.userId` (not the client-supplied studentId), so offline-replayed requests are properly authenticated and the studentId field in the replay payload is correctly ignored. Server stamps `check_in_time` from its own clock.
+
+Stage Summary:
+- Key files CREATED: src/lib/offline.ts, src/hooks/use-online-status.ts, src/components/checkin/offline-banner.tsx
+- Key files MODIFIED: src/components/checkin/check-in-flow.tsx (catch block only — added queueCheckIn + success-path / fallback), src/components/checkin/student-portal.tsx (added OfflineBanner to <main>, added replayPendingCheckIns + online listener effect), package.json (idb@8.0.3 added)
+- How it works: When a student's check-in POST fails due to a network error, the catch block in check-in-flow.tsx now writes the full check-in payload (session, student, GPS, facial descriptor, selfie, capture timestamp) into an IndexedDB queue (`checkin-offline` DB, `pendingCheckins` store). The student sees a success-style "queued offline" result instead of a hard network error. The OfflineBanner in the student portal shows an amber alert whenever the browser is offline or there are queued items. When the browser fires the `online` event (or on portal mount while online), ActivePortal's `replayPendingCheckIns` drains the queue: each item is POSTed to /api/student/check-in; successfully-processed items (HTTP < 500, including 4xx rejections and 409 already-checked-in) are deleted from the queue, while 5xx/network errors stay queued for the next attempt. The student sees "Replaying N queued check-in(s)...", then either "All queued check-ins synced!" or "Failed to sync N check-in(s)".
+- Caveats / known limitations (per spec — out of scope for P5-1):
+  * Server stamps `check_in_time` from its own clock at replay time, not from the original `capturedAt`. A student who queues a check-in at 09:55 and reconnects at 10:30 will appear to have checked in at 10:30. Cryptographic timestamp validation (HMAC-signed capturedAt) is Phase 5.2.
+  * "Success" in the replay loop is defined as HTTP < 500 — i.e. even a rejected_location / rejected_identity / session-not-active response deletes the queue item. This is intentional (the server has the record; retrying won't help) but means a student whose queued check-in gets rejected at replay time will NOT see a toast about the rejection itself — only the "All queued check-ins synced!" message. The attendance row is still updated server-side, so the next sessions/stats refresh reflects the rejection.
+  * The replay logic lives in ActivePortal, so it only runs while the student portal is mounted. If the student closes the tab while offline with items queued, replay happens on the next portal mount (when they reopen the app). There is no service-worker / background sync.
+  * IndexedDB access is wrapped defensively (returns null/empty/0 on any failure), so the offline path degrades gracefully to the original network-error toast if IndexedDB is unavailable (e.g. Safari private mode).
+  * useOnlineStatus uses `useSyncExternalStore` with a server snapshot of `true`, so the very first paint (SSR + hydration) always renders "online". If the student is actually offline at first paint, the banner updates to "offline" immediately after hydration when the client snapshot is read. No hydration mismatch.
+
+---
+Task ID: P5-4-GRADING
+Agent: General-purpose (per-student grading)
+Task: Phase 5.4 — Per-student CA/exam scores (new API routes + editable grading-panel UI)
+
+Work Log:
+- Read worklog.md and prior audit findings; confirmed Phases 1–4 are complete and Phase 5.4 (per-student CA/exam scores) was explicitly listed as UNWRITTEN in the AUDIT-CONSOLIDATED entry.
+- Read existing files to learn conventions: src/app/api/lecturer/grading/route.ts (course-level total_marks upsert pattern), src/app/api/lecturer/export/route.ts (course_departments → students manual-join pattern), src/lib/insforge.ts (PostgREST client returns `{data: unknown[]|null, error}`; duplicate-key errors are normalized to `error.message === 'DUPLICATE'`), src/lib/auth-context.ts (`getAuthUser(request)` returns `{userId, role, ...}` from middleware-set headers), src/components/checkin/grading-panel.tsx (existing read-only attendance-derived marks table + sonner `toast` usage).
+- Created src/app/api/lecturer/grading/scores/route.ts with:
+  * `verifyCourseOwnership(courseId, authUserId)` helper — fetches course, returns 404 if missing, 403 if lecturer_id mismatch.
+  * `fetchEnrolledStudents(courseId)` helper — replicates export/route.ts manual join (course_departments → departments → students), returns `{id, name, matricNumber, departmentName}[]` ordered by matric_number.
+  * `isTableMissingError(msg)` helper — detects PostgREST "table does not exist" / 404 / "relation ... missing" responses.
+  * GET handler — requires courseId+semesterId, verifies ownership BEFORE any other work, fetches enrolled students, fetches saved student_scores rows (swallowing any error including missing-table so the UI still shows every enrolled student with zero scores), merges into `{id, studentId, studentName, matricNumber, departmentName, courseId, semesterId, caScore, examScore, total}` shape.
+  * POST handler — accepts `{courseId, semesterId, studentId, caScore, examScore}`, validates finite numbers in 0–100 range, verifies ownership, then attempts INSERT; on `DUPLICATE` falls back to UPDATE filtered by (course_id, semester_id, student_id). Returns upserted row. On missing-table error returns 500 with helpful "The student_scores table does not exist in the database. Please contact admin to create it." message.
+- Created src/app/api/lecturer/grading/scores/batch/route.ts with:
+  * POST handler — accepts `{courseId, semesterId, scores: [{studentId, caScore, examScore}]}`.
+  * Validates courseId/semesterId/scores-array shape, then validates EVERY row (finite numbers, 0–100 each) BEFORE writing so we don't half-import garbage.
+  * Verifies course ownership BEFORE doing any work.
+  * Loops through clean rows calling an internal `upsertScore()` helper (same INSERT-then-UPDATE-on-DUPLICATE logic as the single endpoint). InsForge has no real transactions, so partial success is possible — per-row errors are collected.
+  * Returns `{success: true, imported: N, errors: [{studentId, error}]}`. If the FIRST upsert fails with table-missing and nothing was imported, returns 500 with the helpful "table does not exist" message. Otherwise returns 200 with whatever was imported + per-row error list.
+- Modified src/components/checkin/grading-panel.tsx:
+  * Added `StudentScoreRow` interface.
+  * Added 5 new state vars: `studentScores` (rows from GET), `scoreInputs` (string-keyed `{ca, exam}` per studentId — strings so the user can clear the field without parse errors), `dirtyScores` (Set<string> of changed studentIds), `loadingScores`, `savingScores`.
+  * Added `fetchStudentScores` (useCallback on [selectedCourse, selectedSemester]) + a useEffect that calls it on every course/semester change. When no selection, clears state instead of fetching.
+  * Added `handleScoreChange(studentId, field, value)` — updates the input map and adds the studentId to the dirty set.
+  * Added `handleSaveScores` — collects dirty rows, parses strings to numbers (NaN → 0), POSTs to `/api/lecturer/grading/scores/batch`, toasts success/failure, clears dirty set on success, refreshes scores to pick up fresh totals/ids.
+  * Added a NEW Card section titled "Per-Student CA & Exam Scores" placed BELOW the existing "Student Marks Calculation" Card. Shows: empty-state hint when no course/semester selected; spinner while loading; "No students enrolled" empty state; otherwise a Table with columns Name | Matric No. | Department | CA Score (max 100) | Exam Score (max 100) | Total | Attendance Mark.
+  * The CA and Exam columns use shadcn `<Input type="number" min="0" max="100" step="0.1">` bound to the string-based `scoreInputs` map.
+  * Total column shows live `(ca + exam).toFixed(2)` computed from the current input strings.
+  * Attendance Mark column looks up the existing `studentMarks` array by matricNumber and shows the attendance-derived mark from the existing handleCalculateMarks flow, or "—" if not yet calculated (so the lecturer can compare CA+Exam vs attendance-derived mark side-by-side).
+  * Table is wrapped in `max-h-96 overflow-y-auto` per spec.
+  * Below the table: a footer row with a "N row(s) modified" hint on the left and a "Save Scores" button on the right (disabled while saving or when dirty set is empty). Save button uses Loader2 spinner while saving.
+  * All success/error feedback via sonner `toast`.
+- Ran `bun run lint` — passes with zero errors. Ran `npx tsc --noEmit` on the three touched files:
+  * Initially had 1 real bug + 2 type-narrowing issues in scores/route.ts.
+  * Fixed the real bug: `verifyCourseOwnership` referenced `auth.userId` (out of scope) instead of its `authUserId` parameter.
+  * Fixed the 2 type-narrowing issues by casting the PostgREST `unknown[]` results to `Record<string, unknown>[]` before `.map(...)` (cleaner than the existing-project pattern that leaves these as TS errors).
+  * Final `npx tsc --noEmit` reports ZERO errors in any of the 3 touched files. (Pre-existing TS errors in src/app/api/lecturer/grading/route.ts and other admin/auth routes are out of scope — those files use the older `(arr||[]).map((x: Record<string,unknown>) => ...)` pattern that was already in the repo before this task.)
+
+Stage Summary:
+- Key files:
+  * NEW: src/app/api/lecturer/grading/scores/route.ts (GET + POST single upsert)
+  * NEW: src/app/api/lecturer/grading/scores/batch/route.ts (POST batch upsert)
+  * MODIFIED: src/components/checkin/grading-panel.tsx (new "Per-Student CA & Exam Scores" section + supporting state/handlers)
+- Table assumed: `student_scores` — must already exist in InsForge (PostgREST) with columns at minimum: `id` (pk), `course_id`, `semester_id`, `student_id`, `ca_score` (numeric), `exam_score` (numeric). A unique constraint on `(course_id, semester_id, student_id)` is REQUIRED for the INSERT-then-UPDATE-on-DUPLICATE upsert to work; otherwise the INSERT path will create duplicate rows instead of falling back to UPDATE. The code uses `db.from('student_scores')` only — no raw SQL, no schema migration.
+- Caveats:
+  * If the `student_scores` table does NOT exist: GET silently treats it as "no scores yet" and returns every enrolled student with caScore=0/examScore=0/total=0 (resilience). POST (single + batch) surfaces the error to the user with the message "The student_scores table does not exist in the database. Please contact admin to create it." The code does NOT attempt to create the table from code.
+  * InsForge has no real DB transactions — the batch endpoint loops upserts sequentially. If a request fails midway, earlier rows remain saved. The batch response always reports the exact `imported` count and per-row `errors[]` so the UI can show partial-success state.
+  * CA and Exam score max is 100 each (configurable via `MAX_SCORE` constant in both route files). Total displayed is `caScore + examScore` (so max possible total is 200) — task spec said "actually use max 100 for each to keep it flexible, with a placeholder hint", so this is by design.
+  * Attendance Mark comparison column populates only after the lecturer clicks the existing "Calculate" button (which calls handleCalculateMarks → /api/lecturer/export). Before that it shows "—". This is intentional — the task said "Show the attendance-derived mark (from the existing handleCalculateMarks flow)".
+  * Matching between the scores table and the attendance-marks table is done by `matricNumber` (the only common key, since studentScores rows carry studentId while the export response only includes matricNumber/name). If two enrolled students somehow share a matric number, the first match wins — acceptable given matric numbers are supposed to be unique.
+
+---
+Task ID: REMEDIATION-MAIN
+Agent: Main (orchestrator)
+Task: Full implementation of checkIn_remediation_plan.md — Phases 1-5
+
+Work Log:
+- Read uploaded /home/z/my-project/upload/checkIn_remediation_plan.md (5 phases, ~25 files)
+- Read all target files in parallel batches to load full context before editing
+- Phase 1.1: Added SESSION_SECRET startup guard in src/lib/session.ts — hard-throws in production if secret is missing/weak/equals dev fallback; warns loudly in dev
+- Phase 1.2: Replaced CheckIn@2024 with surname-based default passwords
+  - src/lib/auth.ts: generateDefaultPassword(name) returns surname.toUpperCase(); added extractSurname helper
+  - 4 creation routes updated (admin/students, admin/lecturers, admin/csv-import, hod/lecturers) to pass name and return {defaultPassword, username} in response
+  - csv-import now hashes per-row (each student has a unique surname-based password) and returns credentials array
+  - Updated UI hints in login-screen.tsx, admin-dashboard.tsx, hod-portal.tsx to remove all CheckIn@2024 literals (verified via grep — zero matches)
+  - Login route already supported matricNumber for students — no route refactor needed
+- Phase 1.3: Defense-in-depth on all 7 /api/admin/* routes (stats, venues, lecturers, students, courses, departments, profile) — each handler now calls getAuthUser + checks role === 'admin' before doing any work
+- Phase 2.1+2.2+2.4: Rewrote lecturer/end-session/route.ts
+  - Added level filter (only marks students whose level matches session.level as absent — fixes 100-level session marking 200/300/400/500-level students absent)
+  - Fixed rejected_* fall-through: only present/pending_review count as "successfully checked in"; rejected_location/rejected_identity students now correctly get absent records
+  - Transaction-style flow: gather all data BEFORE mutating; insert absent rows FIRST; only mark session completed if absent insert succeeded; rollback semantics preserve retryability
+- Phase 2.3+4.6: Rewrote lecturer/start-session/route.ts
+  - Added Nigeria bounding box GPS sanity check (lat 4-14, lng 2-15) — rejects (0,0) null island and out-of-country coords
+  - Added venue collision check at START time (was only at creation) — checks for overlapping active/scheduled sessions in same venue
+  - Added department collision check at START time — checks for overlapping active/scheduled sessions targeting same departments via session_departments
+  - Returns 409 with descriptive message on conflict
+- Phase 2.5+2.6+4.1+4.4:
+  - Added validateDescriptor() to src/lib/face-utils.ts — checks array, exact length 4185, finite numbers, range [-2, 2]
+  - Added EXPECTED_DESCRIPTOR_LENGTH constant (4185)
+  - Wired SIMILARITY_ACCEPT/SIMILARITY_REVIEW constants into getAttendanceStatusFromSimilarity() (was hardcoded 50/40)
+  - check-in/route.ts: validates incoming descriptor + stored descriptor; returns 400 with diagnostic on mismatch
+  - activate/route.ts: validates descriptor before persisting (string and object paths)
+  - check-in/route.ts: added {status: 400} to the rejected_location response (was defaulting to 200)
+- Phase 3.1: HOD PATCH/DELETE ownership checks
+  - hod/lecturers PATCH + DELETE: verify target lecturer's department_id === HOD's hod_department_id/department_id before mutating
+  - hod/courses PATCH + DELETE: verify target course belongs to HOD's department via course_departments link
+  - hod/assign DELETE: same course_departments ownership check
+  - All return 403 with descriptive message on cross-department access attempt
+- Phase 4.2: Added escapeCsv() RFC 4180 helper to export-panel.tsx — doubles internal quotes, wraps every field in quotes; handles embedded newlines
+- Phase 4.3: Deleted public/models/ (14 face-api.js model files, ~13 MB dead weight)
+- Phase 4.5: Fixed check-in-flow.tsx duplicate Haversine — now imports haversineDistance from lib/geo.ts; removed passed=true fallback (now fails closed when no lecturer coords)
+- Phase 5.1: Dispatched subagent — implemented IndexedDB offline cache (src/lib/offline.ts), use-online-status hook, OfflineBanner component, modified check-in-flow.tsx catch block to queue on network failure, modified student-portal.tsx to render banner + replay queued check-ins on 'online' event
+- Phase 5.2: Server-side session revocation
+  - src/lib/session.ts: added jti claim to JWT (via setJti); VerifiableSessionPayload interface
+  - src/lib/revoked-tokens.ts: NEW — in-memory cache + InsForge revoked_tokens table; isTokenRevoked() fails OPEN on DB errors; revokeToken() updates cache immediately (local-instance denial) even if DB write fails
+  - src/middleware.ts: added revocation check after JWT verification — returns 401 + deletes cookie if jti is denylisted
+  - src/app/api/auth/logout/route.ts: extracts jti from current token and calls revokeToken before deleting cookie
+- Phase 5.3: Dispatched subagent — implemented EAR blink detection liveness challenge in face-capture.tsx (2 blinks required, EAR threshold 0.20, 50-400ms closed-phase window, 5s inactivity reset)
+- Phase 5.4: Dispatched subagent — added student_scores table abstraction + 2 new API routes (/api/lecturer/grading/scores + /api/lecturer/grading/scores/batch) + editable per-student CA/exam score UI in grading-panel.tsx
+- Phase 5.5: Copied MediaPipe WASM + model files from node_modules/@mediapipe/face_mesh/ to public/wasm/ (9 files, ~17 MB); updated face-capture.tsx locateFile to serve from /wasm/ instead of jsdelivr CDN; updated constants.ts MEDIAPIPE_CDN to '/wasm'; added public/wasm/** to eslint ignores
+- Added .env with INSFORGE_URL, INSFORGE_API_KEY, SESSION_SECRET (was only DATABASE_URL — pre-existing gap that prevented dev server from booting after Phase 1.1 + Phase 5.2 made env vars required)
+- Fixed pre-existing bug in admin login route: was passing {id, name, email, role} to createSessionToken (which expects userId); changed to explicit {userId, role, email, name}
+- Fixed jose API call: setJTI → setJti (lowercase) per jose library convention
+- Updated eslint.config.mjs to ignore public/wasm/** and public/**/*.js (vendored minified MediaPipe files)
+- Verified end-to-end via agent-browser:
+  - GET / → 200 (login screen renders)
+  - GET /api/auth/me (no cookie) → 401 (middleware blocks)
+  - GET /api/admin/stats (no cookie) → 401 (middleware blocks)
+  - POST /api/auth/login (admin) → 200 with cookie
+  - GET /api/auth/me (with cookie) → 200 with userId populated
+  - GET /api/admin/stats (with cookie) → 200 with real data (1 school, 7 depts, 2 lecturers, 1 HOD, etc.)
+  - POST /api/auth/logout → 200
+  - GET /api/auth/me (SAME cookie, after logout) → 401 (jti denylist works!)
+  - GET /wasm/face_mesh.js → 200 (self-hosted WASM serves correctly)
+  - Browser: admin login renders dashboard with all 4 tabs + real student data
+  - Browser: created new student "Test Student Surname" with matric BIT/25/9999
+  - Browser: logged out, logged back in as student with password "TEST" (surname in block caps) → SUCCESS, routed to activation flow
+- bun run lint passes with ZERO errors
+
+Stage Summary:
+- All 5 phases of the remediation plan implemented
+- Phases 1-4 + 5.5 done by main agent; Phases 5.1, 5.3, 5.4 done by parallel subagents
+- 17 files modified, 7 new files created, 1 directory deleted (public/models/), 1 directory added (public/wasm/)
+- Dev server running clean on port 3000
+- Lint clean
+- Browser-verified: login, logout, revocation, admin dashboard, student creation, surname-based default password login all working
+- Known caveat: revoked_tokens table and student_scores table must be provisioned in InsForge by admin for full Phase 5.2 and 5.4 functionality (code degrades gracefully — fail-open for revocation, fail-soft with zeros for missing scores)
+- Known caveat: SESSION_SECRET in local .env is the dev fallback string (for local dev only); production must set a strong secret (the new guard will hard-throw if it isn't set in production)

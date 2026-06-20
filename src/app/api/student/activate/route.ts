@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { hashPassword } from '@/lib/auth';
 import { getAuthUser } from '@/lib/auth-context';
+import { validateDescriptor } from '@/lib/face-utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -86,7 +87,18 @@ export async function POST(request: NextRequest) {
     if (facialData) {
       if (typeof facialData === 'string') {
         try {
-          JSON.parse(facialData);
+          const parsed = JSON.parse(facialData);
+          // SECURITY: validate descriptor shape on activation. Prevents a
+          // malicious/buggy client from storing `{ descriptor: [] }` which
+          // would brick that student's check-in forever.
+          const descriptorToValidate = parsed?.descriptor ?? parsed;
+          const descriptorError = validateDescriptor(descriptorToValidate);
+          if (descriptorError) {
+            return NextResponse.json(
+              { success: false, error: descriptorError },
+              { status: 400 }
+            );
+          }
           facialDataString = facialData;
         } catch {
           return NextResponse.json(
@@ -95,6 +107,15 @@ export async function POST(request: NextRequest) {
           );
         }
       } else if (typeof facialData === 'object' && facialData !== null) {
+        // SECURITY: validate descriptor shape before persisting.
+        const descriptorToValidate = (facialData as { descriptor?: unknown }).descriptor ?? facialData;
+        const descriptorError = validateDescriptor(descriptorToValidate);
+        if (descriptorError) {
+          return NextResponse.json(
+            { success: false, error: descriptorError },
+            { status: 400 }
+          );
+        }
         facialDataString = JSON.stringify(facialData);
       } else {
         return NextResponse.json(

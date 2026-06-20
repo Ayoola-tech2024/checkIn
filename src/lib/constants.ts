@@ -5,8 +5,11 @@
 export const APP_NAME = 'checkIn';
 export const APP_TAGLINE = 'Student Attendance Platform';
 
-// MediaPipe FaceMesh CDN
-export const MEDIAPIPE_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh';
+// MediaPipe FaceMesh assets are SELF-HOSTED under /public/wasm/ — no CDN
+// dependency. This eliminates the runtime external-network dependency on
+// jsdelivr and keeps biometric capture working in air-gapped deployments.
+export const MEDIAPIPE_BASE_PATH = '/wasm';
+export const MEDIAPIPE_CDN = MEDIAPIPE_BASE_PATH; // alias kept for backwards-compat
 
 // Attendance thresholds
 export const SIMILARITY_ACCEPT = 50;

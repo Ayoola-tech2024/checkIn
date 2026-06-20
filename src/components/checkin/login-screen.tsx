@@ -325,7 +325,7 @@ export function LoginScreen() {
                   <div className="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/20 p-3">
                     <p className="text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
                       <GraduationCap className="size-4 mt-0.5 shrink-0" />
-                      Use your Matric Number with default password (CheckIn@2024) to log in and activate your account.
+                      Use your Matric Number with your default password (your SURNAME in block caps, e.g. &quot;DAMISILE&quot;) to log in and activate your account.
                     </p>
                   </div>
                 )}
@@ -335,8 +335,8 @@ export function LoginScreen() {
                     <p className="text-sm text-sky-800 dark:text-sky-200 flex items-start gap-2">
                       <BookOpen className="size-4 mt-0.5 shrink-0" />
                       {selectedRole === 'hod'
-                        ? 'Use your HOD email with default password (CheckIn@2024) to log in.'
-                        : 'Use your email with default password (CheckIn@2024) to log in.'}
+                        ? 'Use your HOD email with your default password (your SURNAME in block caps) to log in.'
+                        : 'Use your email with your default password (your SURNAME in block caps) to log in.'}
                     </p>
                   </div>
                 )}

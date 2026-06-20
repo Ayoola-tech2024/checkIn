@@ -3,6 +3,43 @@
 // ============================================================
 
 import type { FacialLandmarkData } from './types';
+import { SIMILARITY_ACCEPT, SIMILARITY_REVIEW } from './constants';
+
+/**
+ * Expected descriptor length produced by `landmarksToDescriptor`.
+ * 91 key points × 153 pairs × 3 (dx, dy, dz) = 4185 floats.
+ * The backend validates against this exact length to prevent silent
+ * similarity=0 routing on shape mismatch.
+ */
+export const EXPECTED_DESCRIPTOR_LENGTH = 4185;
+
+/**
+ * Validate that a value is a usable facial descriptor: an array of exactly
+ * EXPECTED_DESCRIPTOR_LENGTH finite numbers. Returns an error string on
+ * failure, or null on success.
+ *
+ * Range check: descriptors are normalized to unit magnitude, so individual
+ * values are typically in [-1, 1]. We allow a generous [-2, 2] window to
+ * accommodate float precision.
+ */
+export function validateDescriptor(descriptor: unknown): string | null {
+  if (!Array.isArray(descriptor)) {
+    return 'Facial descriptor must be an array.';
+  }
+  if (descriptor.length !== EXPECTED_DESCRIPTOR_LENGTH) {
+    return `Facial descriptor must contain exactly ${EXPECTED_DESCRIPTOR_LENGTH} numbers (received ${descriptor.length}). Please recapture your face.`;
+  }
+  for (let i = 0; i < descriptor.length; i++) {
+    const v = descriptor[i];
+    if (typeof v !== 'number' || !Number.isFinite(v)) {
+      return `Facial descriptor contains a non-finite value at index ${i}. Please recapture your face.`;
+    }
+    if (v < -2 || v > 2) {
+      return `Facial descriptor contains an out-of-range value at index ${i} (${v}). Please recapture your face.`;
+    }
+  }
+  return null;
+}
 
 /**
  * Calculate cosine similarity between two facial descriptor vectors.
@@ -52,9 +89,9 @@ export function getAttendanceStatusFromSimilarity(score: number): {
   label: string;
   color: string;
 } {
-  if (score > 50) {
+  if (score > SIMILARITY_ACCEPT) {
     return { status: 'present', label: 'Verified', color: 'text-emerald-500' };
-  } else if (score >= 40) {
+  } else if (score >= SIMILARITY_REVIEW) {
     return { status: 'pending_review', label: 'Pending Review', color: 'text-amber-500' };
   } else {
     return { status: 'rejected_identity', label: 'Identity Rejected', color: 'text-red-500' };

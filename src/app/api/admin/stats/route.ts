@@ -1,8 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // DEFENSE-IN-DEPTH: middleware already enforces admin role, but verify
+    // here too in case middleware is ever bypassed.
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    if (auth.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 });
+    }
     const [
       departmentsResult,
       studentsResult,

@@ -224,7 +224,7 @@ export function HodPortal() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Lecturer created. Default password: ${data.data.defaultPassword}`);
+        toast.success(`Lecturer created. Default password: ${data.data.defaultPassword} (surname in block caps). Login with email: ${data.data.email}`);
         setLecturerDialogOpen(false);
         setLecturerForm({ name: '', email: '' });
         fetchData();
@@ -1009,7 +1009,7 @@ export function HodPortal() {
           <DialogHeader>
             <DialogTitle>Add New Lecturer</DialogTitle>
             <DialogDescription>
-              Create a lecturer in {department?.name}. Default password: CheckIn@2024
+              Create a lecturer in {department?.name}. Default password = the lecturer&apos;s SURNAME in block caps. Login with email.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

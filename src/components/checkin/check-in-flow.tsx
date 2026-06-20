@@ -24,6 +24,8 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { FaceCapture } from '@/components/checkin/face-capture';
 import { useGeoLocation } from '@/hooks/use-geo-location';
+import { haversineDistance } from '@/lib/geo';
+import { queueCheckIn } from '@/lib/offline';
 import type { SessionInfo, CheckInResult, AttendanceStatus } from '@/lib/types';
 import { toast } from 'sonner';
 
@@ -55,28 +57,25 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
 
   const validateLocation = useCallback(
     (lat: number, lng: number) => {
+      // Use the SHARED Haversine implementation from lib/geo.ts — do NOT
+      // duplicate the math here. Fail CLOSED: if the session has no lecturer
+      // coords (which should never happen since start-session now hard-rejects
+      // missing GPS), mark the location check as failed rather than silently
+      // passing the student through.
+      const lecturerLat = session.lecturerLat;
+      const lecturerLng = session.lecturerLng;
+
       let distance = 0;
       let passed = false;
 
-      if (session.lecturerLat && session.lecturerLng) {
-        // Haversine distance calculation
-        const R = 6371000; // Earth's radius in meters
-        const dLat = ((session.lecturerLat - lat) * Math.PI) / 180;
-        const dLng = ((session.lecturerLng - lng) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((lat * Math.PI) / 180) *
-            Math.cos((session.lecturerLat * Math.PI) / 180) *
-            Math.sin(dLng / 2) *
-            Math.sin(dLng / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        distance = R * c;
-
+      if (lecturerLat !== null && lecturerLat !== undefined && lecturerLng !== null && lecturerLng !== undefined) {
+        distance = haversineDistance(lat, lng, lecturerLat, lecturerLng);
         passed = distance <= session.distanceThreshold;
       } else {
-        // If no lecturer coords, check against venue coordinates
-        // For now, if session has no reference point, we can't validate
-        passed = true; // No reference point to validate against
+        // No reference point — fail closed. The server will also reject this
+        // check-in (see check-in/route.ts:96-101), so don't let the student
+        // advance to face-capture only to be rejected server-side.
+        passed = false;
       }
 
       const result: LocationResult = {
@@ -184,9 +183,38 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
           setStep('result');
         }
       } catch {
-        const errorMsg = 'Network error. Please check your connection and try again.';
-        setFaceCaptureError(errorMsg);
-        toast.error(errorMsg);
+        // Network error path — attempt to queue the check-in for
+        // store-and-forward replay when connectivity is restored.
+        const queued = await queueCheckIn({
+          sessionId: session.id,
+          studentId,
+          studentLat: locationResult.lat,
+          studentLng: locationResult.lng,
+          facialDescriptor: data.facialDescriptor,
+          selfieData: data.selfieData,
+          capturedAt: new Date().toISOString(),
+        });
+
+        if (queued) {
+          // Successfully queued offline — surface a success result.
+          toast.success(
+            'You are offline. Your check-in has been queued and will be submitted automatically when you reconnect.'
+          );
+          const checkInRes: CheckInResult = {
+            success: true,
+            stage: 'complete',
+            message: 'Queued offline — will sync when online.',
+            status: 'present',
+          };
+          setCheckInResult(checkInRes);
+          setStep('result');
+        } else {
+          // IndexedDB unavailable or queue write failed — fall back to
+          // the original hard error so the student knows it didn't save.
+          const errorMsg = 'Network error. Please check your connection and try again.';
+          setFaceCaptureError(errorMsg);
+          toast.error(errorMsg);
+        }
       } finally {
         setBiometricProcessing(false);
       }

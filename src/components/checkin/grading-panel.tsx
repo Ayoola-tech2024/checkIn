@@ -55,6 +55,19 @@ interface StudentMark {
   marks: number;
 }
 
+interface StudentScoreRow {
+  id: string | null;
+  studentId: string;
+  studentName: string;
+  matricNumber: string;
+  departmentName: string;
+  courseId: string;
+  semesterId: string;
+  caScore: number;
+  examScore: number;
+  total: number;
+}
+
 export function GradingPanel({ lecturerId }: GradingPanelProps) {
   const [semesters, setSemesters] = useState<SemesterInfo[]>([]);
   const [courses, setCourses] = useState<CourseInfo[]>([]);
@@ -67,6 +80,13 @@ export function GradingPanel({ lecturerId }: GradingPanelProps) {
   const [loadingGrading, setLoadingGrading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [studentScores, setStudentScores] = useState<StudentScoreRow[]>([]);
+  const [scoreInputs, setScoreInputs] = useState<
+    Record<string, { ca: string; exam: string }>
+  >({});
+  const [dirtyScores, setDirtyScores] = useState<Set<string>>(new Set());
+  const [loadingScores, setLoadingScores] = useState(false);
+  const [savingScores, setSavingScores] = useState(false);
 
   // Fetch semesters
   useEffect(() => {
@@ -205,6 +225,113 @@ export function GradingPanel({ lecturerId }: GradingPanelProps) {
       toast.error('Network error calculating marks');
     } finally {
       setCalculating(false);
+    }
+  };
+
+  // Fetch per-student CA/exam scores for the selected course+semester.
+  const fetchStudentScores = useCallback(async () => {
+    if (!selectedCourse || !selectedSemester) {
+      setStudentScores([]);
+      setScoreInputs({});
+      setDirtyScores(new Set());
+      return;
+    }
+    setLoadingScores(true);
+    try {
+      const res = await fetch(
+        `/api/lecturer/grading/scores?courseId=${selectedCourse}&semesterId=${selectedSemester}`
+      );
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setStudentScores(json.data as StudentScoreRow[]);
+        const inputs: Record<string, { ca: string; exam: string }> = {};
+        for (const row of json.data as StudentScoreRow[]) {
+          inputs[row.studentId] = {
+            ca: String(row.caScore ?? 0),
+            exam: String(row.examScore ?? 0),
+          };
+        }
+        setScoreInputs(inputs);
+        setDirtyScores(new Set());
+      } else {
+        toast.error(json.error || 'Failed to load student scores');
+      }
+    } catch {
+      toast.error('Network error loading student scores');
+    } finally {
+      setLoadingScores(false);
+    }
+  }, [selectedCourse, selectedSemester]);
+
+  useEffect(() => {
+    fetchStudentScores();
+  }, [fetchStudentScores]);
+
+  // Track per-row edits to the CA/exam inputs.
+  const handleScoreChange = (
+    studentId: string,
+    field: 'ca' | 'exam',
+    value: string
+  ) => {
+    setScoreInputs((prev) => ({
+      ...prev,
+      [studentId]: { ...prev[studentId], [field]: value },
+    }));
+    setDirtyScores((prev) => {
+      const next = new Set(prev);
+      next.add(studentId);
+      return next;
+    });
+  };
+
+  // Save only the dirty rows via the batch endpoint.
+  const handleSaveScores = async () => {
+    if (!selectedCourse || !selectedSemester) {
+      toast.error('Please select a course and semester');
+      return;
+    }
+    if (dirtyScores.size === 0) {
+      toast.info('No changes to save');
+      return;
+    }
+
+    const scores = Array.from(dirtyScores).map((studentId) => {
+      const input = scoreInputs[studentId] || { ca: '0', exam: '0' };
+      return {
+        studentId,
+        caScore: parseFloat(input.ca) || 0,
+        examScore: parseFloat(input.exam) || 0,
+      };
+    });
+
+    setSavingScores(true);
+    try {
+      const res = await fetch('/api/lecturer/grading/scores/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: selectedCourse,
+          semesterId: selectedSemester,
+          scores,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        const imported: number = json.imported ?? 0;
+        toast.success(`Saved ${imported} score${imported === 1 ? '' : 's'}`);
+        if (Array.isArray(json.errors) && json.errors.length > 0) {
+          toast.warning(`${json.errors.length} row(s) failed to save`);
+        }
+        setDirtyScores(new Set());
+        // Refresh to pick up fresh totals/ids.
+        fetchStudentScores();
+      } else {
+        toast.error(json.error || 'Failed to save scores');
+      }
+    } catch {
+      toast.error('Network error saving scores');
+    } finally {
+      setSavingScores(false);
     }
   };
 
@@ -385,6 +512,120 @@ export function GradingPanel({ lecturerId }: GradingPanelProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Per-Student CA & Exam Scores */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Per-Student CA &amp; Exam Scores</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!selectedCourse || !selectedSemester ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Please select a course and semester above to load students.
+            </p>
+          ) : loadingScores ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : studentScores.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              No students enrolled in this course.
+            </p>
+          ) : (
+            <>
+              <div className="max-h-96 overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Matric No.</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead className="w-32">CA Score (max 100)</TableHead>
+                      <TableHead className="w-32">Exam Score (max 100)</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right">Attendance Mark</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {studentScores.map((row) => {
+                      const input = scoreInputs[row.studentId] || {
+                        ca: '0',
+                        exam: '0',
+                      };
+                      const caNum = parseFloat(input.ca) || 0;
+                      const examNum = parseFloat(input.exam) || 0;
+                      const total = caNum + examNum;
+                      const attendance = studentMarks.find(
+                        (m) => m.matricNumber === row.matricNumber
+                      );
+                      return (
+                        <TableRow key={row.studentId}>
+                          <TableCell className="font-medium">{row.studentName}</TableCell>
+                          <TableCell>{row.matricNumber}</TableCell>
+                          <TableCell>{row.departmentName}</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={input.ca}
+                              onChange={(e) =>
+                                handleScoreChange(row.studentId, 'ca', e.target.value)
+                              }
+                              placeholder="0–100"
+                              className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={input.exam}
+                              onChange={(e) =>
+                                handleScoreChange(row.studentId, 'exam', e.target.value)
+                              }
+                              placeholder="0–100"
+                              className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {total.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {attendance ? attendance.marks.toFixed(2) : '—'}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-xs text-muted-foreground">
+                  {dirtyScores.size > 0
+                    ? `${dirtyScores.size} row(s) modified`
+                    : 'All changes saved'}
+                </p>
+                <Button
+                  onClick={handleSaveScores}
+                  disabled={savingScores || dirtyScores.size === 0}
+                >
+                  {savingScores ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving
+                    </>
+                  ) : (
+                    'Save Scores'
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {loadingGrading && (
         <div className="flex justify-center py-8">

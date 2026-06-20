@@ -47,7 +47,9 @@ import { useAuthStore } from '@/hooks/use-auth';
 import { FaceCapture } from '@/components/checkin/face-capture';
 import { CheckInFlow } from '@/components/checkin/check-in-flow';
 import { ProfilePanel } from '@/components/checkin/profile-panel';
+import { OfflineBanner } from '@/components/checkin/offline-banner';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { getAllPendingCheckIns, deletePendingCheckIn } from '@/lib/offline';
 import type { SessionInfo, CheckInResult, AttendanceStatus, ApiResponse } from '@/lib/types';
 import { SESSION_POLL_INTERVAL, SCHOOL } from '@/lib/constants';
 import { toast } from 'sonner';
@@ -475,6 +477,80 @@ function ActivePortal() {
     };
   }, [fetchSessions, fetchStats]);
 
+  // ---- Offline store-and-forward replay ----
+  // When the browser transitions back to online (or on mount while already
+  // online), drain any queued check-ins by re-submitting them to the API.
+  // Successfully-processed items (HTTP < 500, including 4xx "rejected" and
+  // 409 "already checked in") are removed from the queue; transient failures
+  // (5xx, network) are kept for the next attempt.
+  const replayingRef = useRef(false);
+  const replayPendingCheckIns = useCallback(async () => {
+    if (replayingRef.current) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+    const pending = await getAllPendingCheckIns();
+    if (pending.length === 0) return;
+
+    replayingRef.current = true;
+    toast.info(`Replaying ${pending.length} queued check-in(s)...`);
+
+    let failures = 0;
+    for (const item of pending) {
+      try {
+        const response = await fetch('/api/student/check-in', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: item.studentId,
+            sessionId: item.sessionId,
+            studentLat: item.studentLat,
+            studentLng: item.studentLng,
+            facialDescriptor: item.facialDescriptor,
+            selfieData: item.selfieData,
+          }),
+        });
+
+        // Treat anything below 500 as "processed" — 4xx rejections (location,
+        // identity, session-not-active) and 409 (already checked in) mean the
+        // server has the record, so retrying won't change anything.
+        if (response.status < 500) {
+          if (item.id !== undefined) {
+            await deletePendingCheckIn(item.id);
+          }
+        } else {
+          failures++;
+        }
+      } catch {
+        // Network error — leave in queue for the next attempt.
+        failures++;
+      }
+    }
+
+    replayingRef.current = false;
+
+    if (failures === 0) {
+      toast.success('All queued check-ins synced!');
+    } else {
+      toast.error(`Failed to sync ${failures} check-in(s)`);
+    }
+
+    // Refresh UI to reflect any newly-recorded attendance.
+    fetchSessions();
+    fetchStats();
+  }, [fetchSessions, fetchStats]);
+
+  // Register the `online` listener and attempt an initial drain on mount
+  // (covers the case where the student closed/reopened the tab while online
+  // with items still queued from a previous offline session).
+  useEffect(() => {
+    replayPendingCheckIns();
+
+    window.addEventListener('online', replayPendingCheckIns);
+    return () => {
+      window.removeEventListener('online', replayPendingCheckIns);
+    };
+  }, [replayPendingCheckIns]);
+
   // Handle check-in completion
   const handleCheckInComplete = useCallback(
     (result: CheckInResult) => {
@@ -576,6 +652,8 @@ function ActivePortal() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-4 space-y-6">
+        {/* Offline status banner (queued check-ins / connectivity) */}
+        <OfflineBanner />
         {/* Loading State */}
         {loading && (
           <div className="space-y-4">

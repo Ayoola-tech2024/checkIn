@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, AlertTriangle, CheckCircle2, Loader2, RotateCcw } from 'lucide-react';
+import { Camera, AlertTriangle, CheckCircle2, Loader2, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MAX_SELFIE_SIZE_KB } from '@/lib/constants';
@@ -29,6 +29,58 @@ type DetectionStatus =
   | 'no-face'
   | 'error';
 
+// ============================================================
+// Anti-spoofing: Eye Aspect Ratio (EAR) blink detection
+// (Soukupova & Cech, 2016 — "Real-Time Eye Blink Detection using
+// Facial Landmarks").
+//
+// MediaPipe FaceMesh landmark indices for the two eye contours.
+// Ordering per the EAR paper: [p1, p2, p3, p4, p5, p6] where
+//   p1 = outer eye corner
+//   p2, p3 = upper eyelid
+//   p4 = inner eye corner
+//   p5, p6 = lower eyelid
+// Right eye = subject's right (image left); Left eye = subject's left (image right).
+// ============================================================
+const RIGHT_EYE_IDX = [33, 160, 158, 133, 153, 144];
+const LEFT_EYE_IDX  = [362, 385, 387, 263, 373, 380];
+
+const EAR_THRESHOLD    = 0.20; // EAR below this = eye closed (open ~0.30, closed ~0.10)
+const BLINK_MIN_MS     = 50;   // reject micro-flickers shorter than this
+const BLINK_MAX_MS     = 400;  // reject long holds longer than this
+const BLINK_TIMEOUT_MS = 5000; // reset blink count after 5s with no blink
+const REQUIRED_BLINKS  = 2;    // natural blinks required to prove liveness
+
+// Compute the Eye Aspect Ratio for a single eye from its 6 contour
+// landmarks. Uses 2D coordinates only (z is unreliable for EAR).
+// Returns -1 if any required landmark is missing.
+// No array allocations — direct index access only, so this is safe
+// to call every video frame.
+function computeEar(landmarks: any, idx: number[]): number {
+  const p1 = landmarks[idx[0]];
+  const p2 = landmarks[idx[1]];
+  const p3 = landmarks[idx[2]];
+  const p4 = landmarks[idx[3]];
+  const p5 = landmarks[idx[4]];
+  const p6 = landmarks[idx[5]];
+  if (!p1 || !p2 || !p3 || !p4 || !p5 || !p6) return -1;
+
+  // Vertical distances: ||p2-p6|| and ||p3-p5||
+  const dx26 = p2.x - p6.x;
+  const dy26 = p2.y - p6.y;
+  const dx35 = p3.x - p5.x;
+  const dy35 = p3.y - p5.y;
+  // Horizontal distance: ||p1-p4||
+  const dx14 = p1.x - p4.x;
+  const dy14 = p1.y - p4.y;
+
+  const v1 = Math.sqrt(dx26 * dx26 + dy26 * dy26);
+  const v2 = Math.sqrt(dx35 * dx35 + dy35 * dy35);
+  const h  = Math.sqrt(dx14 * dx14 + dy14 * dy14);
+  if (h < 1e-6) return -1;
+  return (v1 + v2) / (2 * h);
+}
+
 export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,6 +94,17 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [lastLandmarks, setLastLandmarks] = useState<any>(null);
 
+  // Anti-spoofing blink state.
+  // Refs are the source of truth for the per-frame state machine so
+  // `onResults` (which is memoised with `[]` deps) never sees stale
+  // closures. `blinkCount` state mirrors the ref purely to trigger UI
+  // re-renders when a blink completes.
+  const [blinkCount, setBlinkCount] = useState(0);
+  const blinkCountRef = useRef(0);
+  const isEyeClosedRef = useRef(false);
+  const eyeClosedAtRef = useRef<number | null>(null);
+  const lastBlinkTimeRef = useRef<number>(0);
+
   // Load MediaPipe FaceMesh
   const loadFaceMesh = useCallback(async (): Promise<any> => {
     if (faceMeshRef.current) return faceMeshRef.current;
@@ -53,7 +116,11 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
 
       const faceMesh = new FaceMesh({
         locateFile: (file: string) => {
-          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+          // SELF-HOSTED: serve MediaPipe WASM + model binaries from /wasm/
+          // instead of the jsdelivr CDN. Eliminates the runtime external-
+          // network dependency — biometric capture works in air-gapped
+          // deployments and is not affected by CDN outages.
+          return `/wasm/${file}`;
         },
       });
 
@@ -111,9 +178,58 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
       ctx.fillStyle = 'rgba(0, 200, 100, 0.8)';
       ctx.font = '24px sans-serif';
       ctx.fillText('✓ Face Detected', 10, 30);
+
+      // ---- Anti-spoofing: EAR blink detection state machine ----
+      const earR = computeEar(landmarks, RIGHT_EYE_IDX);
+      const earL = computeEar(landmarks, LEFT_EYE_IDX);
+      if (earR >= 0 && earL >= 0) {
+        const ear = (earR + earL) / 2;
+        const now = performance.now();
+
+        // 5-second inactivity reset — only fires BEFORE liveness is
+        // reached, so a verified user isn't penalised for pausing.
+        if (
+          blinkCountRef.current < REQUIRED_BLINKS &&
+          lastBlinkTimeRef.current > 0 &&
+          now - lastBlinkTimeRef.current > BLINK_TIMEOUT_MS
+        ) {
+          blinkCountRef.current = 0;
+          setBlinkCount(0);
+          isEyeClosedRef.current = false;
+          eyeClosedAtRef.current = null;
+        }
+
+        if (ear < EAR_THRESHOLD) {
+          // Eye is (or remains) closed — record the close timestamp on
+          // the open→closed transition only.
+          if (!isEyeClosedRef.current) {
+            isEyeClosedRef.current = true;
+            eyeClosedAtRef.current = now;
+          }
+        } else if (isEyeClosedRef.current) {
+          // Eye just reopened — evaluate whether the closed phase was a
+          // valid natural blink (50–400 ms) or a rejectable flicker/hold.
+          const closedAt = eyeClosedAtRef.current;
+          if (closedAt !== null) {
+            const dur = now - closedAt;
+            if (dur >= BLINK_MIN_MS && dur <= BLINK_MAX_MS) {
+              blinkCountRef.current += 1;
+              setBlinkCount(blinkCountRef.current);
+              lastBlinkTimeRef.current = now;
+            }
+          }
+          isEyeClosedRef.current = false;
+          eyeClosedAtRef.current = null;
+        }
+      }
+      // ---- end EAR blink detection ----
     } else {
       setStatus('no-face');
       setLastLandmarks(null);
+      // Reset eye-closed tracking so a stale close→open transition
+      // isn't miscounted when the face reappears.
+      isEyeClosedRef.current = false;
+      eyeClosedAtRef.current = null;
     }
   }, []);
 
@@ -202,6 +318,13 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
     setLastLandmarks(null);
     setErrorMessage('');
     setStatus('idle');
+    // Reset anti-spoofing blink state so a re-capture requires fresh
+    // blinks (prevents replay of a previously-verified liveness session).
+    blinkCountRef.current = 0;
+    isEyeClosedRef.current = false;
+    eyeClosedAtRef.current = null;
+    lastBlinkTimeRef.current = 0;
+    setBlinkCount(0);
     startCamera();
   }, [startCamera]);
 
@@ -309,8 +432,39 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
         </div>
       )}
 
-      {/* Camera Capture Button */}
-      {!capturedSelfie && status === 'face-found' && (
+      {/* Anti-spoofing liveness check indicator */}
+      {!capturedSelfie && (status === 'detecting' || status === 'face-found' || status === 'no-face') && (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+          {blinkCount >= REQUIRED_BLINKS ? (
+            <>
+              <Eye className="size-4 shrink-0 text-emerald-600" />
+              <span className="font-medium text-emerald-700">
+                Liveness verified — you may capture your face.
+              </span>
+            </>
+          ) : (
+            <>
+              <EyeOff className="size-4 shrink-0 text-amber-600" />
+              <span className="text-muted-foreground">
+                Blink twice to verify you are real{' '}
+                <span className="font-medium">
+                  ({Math.min(blinkCount, REQUIRED_BLINKS)}/{REQUIRED_BLINKS} blinks detected)
+                </span>
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Camera Capture Button — disabled (grayed out, not clickable)
+          until liveness is verified via 2 natural blinks. */}
+      {!capturedSelfie && status === 'face-found' && blinkCount < REQUIRED_BLINKS && (
+        <Button disabled className="w-full opacity-60" size="lg">
+          <Camera className="size-4 mr-2" />
+          Capture Face (blink to enable)
+        </Button>
+      )}
+      {!capturedSelfie && status === 'face-found' && blinkCount >= REQUIRED_BLINKS && (
         <Button onClick={handleCapture} className="w-full" size="lg">
           <Camera className="size-4 mr-2" />
           Capture Face
@@ -334,6 +488,7 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
             <li>Face the camera directly (frontal view)</li>
             <li>Remove sunglasses or face coverings</li>
             <li>Keep a neutral expression</li>
+            <li>Blink naturally twice to verify you are real</li>
           </ul>
         </div>
       )}

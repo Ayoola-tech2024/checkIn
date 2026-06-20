@@ -45,6 +45,17 @@ function formatExportStatus(status: string): string {
   return map[status] || status;
 }
 
+/**
+ * RFC 4180 CSV field escaping: wrap every field in double quotes and double
+ * any internal double-quote characters. Also handles newlines within fields
+ * (which are preserved inside quotes per RFC 4180 §2.6).
+ */
+function escapeCsv(value: string | number | undefined | null): string {
+  const str = value === undefined || value === null ? '' : String(value);
+  // Double internal double-quotes, then wrap the whole field in double quotes.
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
 function getStatusBadgeVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'present') return 'default';
   if (status === 'absent') return 'destructive';
@@ -172,7 +183,7 @@ export function ExportPanel({ lecturerId }: ExportPanelProps) {
       }
     }
 
-    const csvString = [headers, ...rows].map((row) => row.map((cell) => `"${cell}"`).join(',')).join('\n');
+    const csvString = [headers, ...rows].map((row) => row.map((cell) => escapeCsv(cell)).join(',')).join('\n');
     const blob = new Blob([csvString], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

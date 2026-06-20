@@ -3,8 +3,24 @@ import { db } from '@/lib/insforge';
 import { hashPassword, generateDefaultPassword } from '@/lib/auth';
 import { validateStudentFields } from '@/lib/slit-validation';
 import { SLIT_SCHOOL_ID, VALID_LEVELS } from '@/lib/constants';
+import { getAuthUser } from '@/lib/auth-context';
+
+function requireAdmin(request: NextRequest) {
+  // DEFENSE-IN-DEPTH: middleware already enforces admin role, but verify
+  // here too in case middleware is ever bypassed.
+  const auth = getAuthUser(request);
+  if (!auth) {
+    return { ok: false, response: NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 }) };
+  }
+  if (auth.role !== 'admin') {
+    return { ok: false, response: NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 }) };
+  }
+  return { ok: true, auth };
+}
 
 export async function POST(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { name, matricNumber, departmentId, level } = await request.json();
 
@@ -54,7 +70,9 @@ export async function POST(request: NextRequest) {
     }
 
     const department = depts[0] as Record<string, unknown>;
-    const defaultPassword = generateDefaultPassword();
+    // SECURITY: Per-account default password = student's SURNAME in block caps.
+    // Username for first login = matric number.
+    const defaultPassword = generateDefaultPassword(name);
     const passwordHash = await hashPassword(defaultPassword);
 
     const { data: students, error } = await db
@@ -99,6 +117,7 @@ export async function POST(request: NextRequest) {
         level: typeof student.level === 'number' ? student.level : parsedLevel,
         activated: false,
         defaultPassword,
+        username: matricNumber,
       },
     });
   } catch (error) {
@@ -111,6 +130,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { id, name, matricNumber, departmentId, level } = await request.json();
 
@@ -207,6 +228,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

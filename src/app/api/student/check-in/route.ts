@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { haversineDistance } from '@/lib/geo';
-import { calculateSimilarity, getAttendanceStatusFromSimilarity } from '@/lib/face-utils';
+import { calculateSimilarity, getAttendanceStatusFromSimilarity, validateDescriptor } from '@/lib/face-utils';
 import { getAuthUser } from '@/lib/auth-context';
 
 export async function POST(request: NextRequest) {
@@ -24,6 +24,18 @@ export async function POST(request: NextRequest) {
     if (!sessionId || studentLat === undefined || studentLng === undefined || !facialDescriptor) {
       return NextResponse.json(
         { success: false, error: 'Session ID, coordinates, and facial descriptor are required' },
+        { status: 400 }
+      );
+    }
+
+    // SECURITY: Validate the incoming facial descriptor shape & length before
+    // doing any DB work. A malformed descriptor would otherwise silently
+    // produce similarity=0 (per calculateSimilarity's length-mismatch guard)
+    // and route the student to `rejected_identity` with no diagnostic.
+    const descriptorError = validateDescriptor(facialDescriptor);
+    if (descriptorError) {
+      return NextResponse.json(
+        { success: false, error: descriptorError },
         { status: 400 }
       );
     }
@@ -139,7 +151,7 @@ export async function POST(request: NextRequest) {
           threshold: session.distance_threshold,
           message: `Too far from venue (${Math.round(distance)}m vs ${session.distance_threshold}m required)`,
         },
-      });
+      }, { status: 400 });
     }
 
     // ===== TIER 2: Facial Recognition Validation =====
@@ -158,6 +170,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Invalid facial data on file. Please re-activate your account.' },
         { status: 400 }
+      );
+    }
+
+    // Validate the STORED descriptor too — a corrupted/empty activation could
+    // otherwise brick this student's check-in forever with no diagnostic.
+    const storedDescriptorError = validateDescriptor(storedDescriptor);
+    if (storedDescriptorError) {
+      return NextResponse.json(
+        { success: false, error: 'Corrupted facial data on file. Please contact admin to re-activate your account.' },
+        { status: 500 }
       );
     }
 

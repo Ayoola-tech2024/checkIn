@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifySessionToken, getSessionCookieName } from '@/lib/session';
+import { isTokenRevoked } from '@/lib/revoked-tokens';
 
 // Role required for each API path prefix
 const ROLE_RULES: { prefix: string; roles: string[] }[] = [
@@ -50,6 +51,19 @@ export async function middleware(request: NextRequest) {
       { status: 401 }
     );
     // Clear the invalid cookie
+    response.cookies.delete(getSessionCookieName());
+    return response;
+  }
+
+  // REVOCATION CHECK: even if the JWT signature & expiry are valid, the
+  // token may have been explicitly revoked (e.g. user logged out, admin
+  // force-logged-out). Check the jti denylist. Fails OPEN on DB errors so
+  // the app keeps working if the revoked_tokens table is unavailable.
+  if (payload.jti && (await isTokenRevoked(payload.jti))) {
+    const response = NextResponse.json(
+      { success: false, error: 'Session has been revoked. Please log in again.' },
+      { status: 401 }
+    );
     response.cookies.delete(getSessionCookieName());
     return response;
   }

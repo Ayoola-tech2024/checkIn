@@ -57,7 +57,12 @@ export async function POST(request: NextRequest) {
         email: admin.email as string,
         role: 'admin' as const,
       };
-      const token = await createSessionToken({ ...userData, role: 'admin' });
+      const token = await createSessionToken({
+        userId: userData.id,
+        role: 'admin',
+        email: userData.email,
+        name: userData.name,
+      });
       const response = NextResponse.json({ success: true, data: userData });
       return setSessionCookie(response, token);
     }

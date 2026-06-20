@@ -818,8 +818,8 @@ function StudentsTab({
       const data = await res.json();
       if (data.success && data.data) {
         toast.success(
-          `Student created! Default password: ${data.data.defaultPassword}`,
-          { duration: 10000 }
+          `Student created! Default password: ${data.data.defaultPassword} (surname in block caps). Login with matric number: ${data.data.matricNumber}`,
+          { duration: 12000 }
         );
         setStudentName('');
         setStudentMatric('');
@@ -953,7 +953,7 @@ function StudentsTab({
                 <DialogHeader>
                   <DialogTitle>Create Student</DialogTitle>
                   <DialogDescription>
-                    Add a new student to the system. A default password will be generated automatically.
+                    Add a new student to the system. Default password = the student&apos;s SURNAME in block caps. Login with matric number.
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleCreateStudent} className="space-y-4">
@@ -1703,7 +1703,8 @@ function HodsTab({
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('HOD created! Default password: CheckIn@2024', { duration: 10000 });
+        const dp = data.data?.defaultPassword || '(surname)';
+        toast.success(`HOD created! Default password: ${dp} (surname in block caps). Login with email.`, { duration: 12000 });
         setHodName('');
         setHodEmail('');
         setHodDeptId('');
@@ -1827,7 +1828,7 @@ function HodsTab({
                 <DialogHeader>
                   <DialogTitle>Assign HOD</DialogTitle>
                   <DialogDescription>
-                    Create a Head of Department for a department that doesn&apos;t have one yet. Default password: CheckIn@2024
+                    Create a Head of Department for a department that doesn&apos;t have one yet. Default password = the HOD&apos;s SURNAME in block caps (e.g. &quot;SMITH&quot;). Login with email.
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleCreateHod} className="space-y-4">
@@ -1880,7 +1881,7 @@ function HodsTab({
                       Email: <span className="font-mono">{hodEmail || 'email@example.com'}</span>
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Password: <span className="font-mono">CheckIn@2024</span>
+                      Password: <span className="font-mono">{hodName.trim() ? hodName.trim().split(/\s+/)[0].toUpperCase() : '(surname in block caps)'}</span>
                     </p>
                   </div>
                   <DialogFooter>

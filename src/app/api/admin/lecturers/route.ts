@@ -3,8 +3,24 @@ import { db } from '@/lib/insforge';
 import { hashPassword, generateDefaultPassword } from '@/lib/auth';
 import { validateLecturerFields } from '@/lib/slit-validation';
 import { SLIT_SCHOOL_ID } from '@/lib/constants';
+import { getAuthUser } from '@/lib/auth-context';
 
-export async function GET() {
+function requireAdmin(request: NextRequest) {
+  // DEFENSE-IN-DEPTH: middleware already enforces admin role, but verify
+  // here too in case middleware is ever bypassed.
+  const auth = getAuthUser(request);
+  if (!auth) {
+    return { ok: false, response: NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 }) };
+  }
+  if (auth.role !== 'admin') {
+    return { ok: false, response: NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 }) };
+  }
+  return { ok: true, auth };
+}
+
+export async function GET(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { data: lecturers, error } = await db
       .from('lecturers')
@@ -121,6 +137,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { name, email, departmentId, isHod, hodDepartmentId } = await request.json();
 
@@ -174,8 +192,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Set default password at creation time
-    const defaultPassword = generateDefaultPassword();
+    // SECURITY: Per-account default password = lecturer's SURNAME in block caps.
+    // Username for first login = email.
+    const defaultPassword = generateDefaultPassword(name);
     const passwordHash = await hashPassword(defaultPassword);
 
     const insertData: Record<string, unknown> = {
@@ -240,6 +259,7 @@ export async function POST(request: NextRequest) {
         hodDepartmentId: lecturer.hod_department_id,
         hodDepartmentName: hodDeptName,
         defaultPassword,
+        username: email,
         courses: [],
       },
     });
@@ -253,6 +273,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { id, name, email, departmentId, isHod, hodDepartmentId } = await request.json();
 
@@ -381,6 +403,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

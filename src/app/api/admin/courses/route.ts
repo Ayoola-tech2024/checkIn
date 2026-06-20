@@ -2,8 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { validateCourseFields } from '@/lib/slit-validation';
 import { SLIT_SCHOOL_ID, VALID_LEVELS } from '@/lib/constants';
+import { getAuthUser } from '@/lib/auth-context';
 
-export async function GET() {
+function requireAdmin(request: NextRequest) {
+  // DEFENSE-IN-DEPTH: middleware already enforces admin role, but verify
+  // here too in case middleware is ever bypassed.
+  const auth = getAuthUser(request);
+  if (!auth) {
+    return { ok: false, response: NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 }) };
+  }
+  if (auth.role !== 'admin') {
+    return { ok: false, response: NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 }) };
+  }
+  return { ok: true, auth };
+}
+
+export async function GET(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { data: courses, error } = await db
       .from('courses')
@@ -121,6 +137,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { name, code, level, lecturerId, departmentIds, departmentId } = await request.json();
 
@@ -269,6 +287,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { id, name, code, level, lecturerId, departmentIds, departmentId } = await request.json();
 
@@ -417,6 +437,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const guard = requireAdmin(request);
+  if (!guard.ok) return guard.response!;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

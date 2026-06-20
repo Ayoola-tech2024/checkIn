@@ -106,8 +106,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: validation.errors.join(', ') }, { status: 400 });
     }
 
-    // Hash default password
-    const defaultPassword = generateDefaultPassword();
+    // SECURITY: Per-account default password = lecturer's SURNAME in block caps.
+    // Username for first login = email.
+    const defaultPassword = generateDefaultPassword(name);
     const passwordHash = await hashPassword(defaultPassword);
 
     // Create lecturer
@@ -136,6 +137,7 @@ export async function POST(request: NextRequest) {
         departmentId,
         isHod: false,
         defaultPassword,
+        username: email,
       },
     });
   } catch (error) {
@@ -146,11 +148,44 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { lecturerId, name, email } = body;
 
     if (!lecturerId) {
       return NextResponse.json({ success: false, error: 'Lecturer ID is required' }, { status: 400 });
+    }
+
+    // SECURITY: Verify the target lecturer belongs to the HOD's department
+    // BEFORE mutating. Prevents a malicious HOD from editing lecturers in
+    // other departments by supplying an arbitrary lecturerId.
+    const { data: hodLecturers } = await db
+      .from('lecturers')
+      .select('hod_department_id, department_id')
+      .eq('id', auth.userId);
+    if (!hodLecturers || hodLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'HOD record not found' }, { status: 404 });
+    }
+    const hodLecturer = hodLecturers[0] as Record<string, unknown>;
+    const hodDeptId = hodLecturer.hod_department_id || hodLecturer.department_id;
+    if (!hodDeptId) {
+      return NextResponse.json({ success: false, error: 'No department assigned to this HOD' }, { status: 403 });
+    }
+
+    const { data: targetLecturers } = await db.from('lecturers').select('id, department_id').eq('id', lecturerId);
+    if (!targetLecturers || targetLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'Lecturer not found' }, { status: 404 });
+    }
+    const targetLecturer = targetLecturers[0] as Record<string, unknown>;
+    if (targetLecturer.department_id !== hodDeptId) {
+      return NextResponse.json(
+        { success: false, error: 'You do not have permission to modify lecturers outside your department' },
+        { status: 403 }
+      );
     }
 
     const updates: Record<string, unknown> = {};
@@ -179,6 +214,11 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const lecturerId = searchParams.get('lecturerId');
 
@@ -186,9 +226,36 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Lecturer ID is required' }, { status: 400 });
     }
 
+    // SECURITY: Verify the target lecturer belongs to the HOD's department
+    // BEFORE deleting. Prevents a malicious HOD from deleting lecturers in
+    // other departments by supplying an arbitrary lecturerId.
+    const { data: hodLecturers } = await db
+      .from('lecturers')
+      .select('hod_department_id, department_id')
+      .eq('id', auth.userId);
+    if (!hodLecturers || hodLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'HOD record not found' }, { status: 404 });
+    }
+    const hodLecturer = hodLecturers[0] as Record<string, unknown>;
+    const hodDeptId = hodLecturer.hod_department_id || hodLecturer.department_id;
+    if (!hodDeptId) {
+      return NextResponse.json({ success: false, error: 'No department assigned to this HOD' }, { status: 403 });
+    }
+
+    const { data: targetLecturers } = await db.from('lecturers').select('id, department_id, is_hod').eq('id', lecturerId);
+    if (!targetLecturers || targetLecturers.length === 0) {
+      return NextResponse.json({ success: false, error: 'Lecturer not found' }, { status: 404 });
+    }
+    const targetLecturer = targetLecturers[0] as Record<string, unknown>;
+    if (targetLecturer.department_id !== hodDeptId) {
+      return NextResponse.json(
+        { success: false, error: 'You do not have permission to delete lecturers outside your department' },
+        { status: 403 }
+      );
+    }
+
     // Check not HOD
-    const { data: lecturers } = await db.from('lecturers').select('is_hod').eq('id', lecturerId);
-    if (lecturers && lecturers.length > 0 && (lecturers[0] as Record<string, unknown>).is_hod) {
+    if (targetLecturer.is_hod) {
       return NextResponse.json({ success: false, error: 'Cannot delete a Head of Department. Remove HOD status first.' }, { status: 403 });
     }
 

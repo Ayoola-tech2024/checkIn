@@ -17,12 +17,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const defaultPassword = generateDefaultPassword();
-    const passwordHash = await hashPassword(defaultPassword);
-
+    // SECURITY: Per-account default password = student's SURNAME in block caps.
+    // We can't hash one global password for all imported students because each
+    // has a different surname. We hash per-row instead.
     let imported = 0;
     let skipped = 0;
     let errors: string[] = [];
+    const generatedCredentials: { matricNumber: string; name: string; defaultPassword: string }[] = [];
 
     // Pre-fetch all departments to minimize API calls
     const { data: allDepts } = await db.from('departments').select('*');
@@ -96,6 +97,10 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        // Per-row default password = student's surname in block caps.
+        const defaultPassword = generateDefaultPassword(row.name);
+        const passwordHash = await hashPassword(defaultPassword);
+
         await db.from('students').insert({
           name: row.name,
           matric_number: row.matricNumber,
@@ -106,6 +111,7 @@ export async function POST(request: NextRequest) {
           level: studentLevel,
         });
 
+        generatedCredentials.push({ matricNumber: row.matricNumber, name: row.name, defaultPassword });
         imported++;
       } catch (err) {
         skipped++;
@@ -121,6 +127,9 @@ export async function POST(request: NextRequest) {
         skipped,
         total: students.length,
         errors: errors.length > 0 ? errors : undefined,
+        // Return the per-student default passwords so the admin can relay them
+        // to each student. Each password = that student's surname in block caps.
+        credentials: generatedCredentials,
       },
     });
   } catch (error) {
