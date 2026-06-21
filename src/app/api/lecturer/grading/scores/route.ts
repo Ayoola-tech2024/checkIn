@@ -7,7 +7,14 @@
 //   scores, or zeros if no row exists yet.
 // POST /api/lecturer/grading/scores
 //   Upserts a single { courseId, semesterId, studentId, caScore,
-//   examScore } row into student_scores.
+//   examScore } row into student_grades.
+//
+// The backing table is `student_grades` (NOT `student_scores`). Its
+// schema: { id, student_id, course_id, semester_id, ca_score,
+// exam_score, total, graded_by, created_at, updated_at }.
+// `graded_by` is a FK to lecturers.id — we set it to auth.userId on
+// every write. `total` is NOT trigger-computed; the API must populate
+// it from ca_score + exam_score.
 //
 // Defense-in-depth: every handler calls getAuthUser(request) and
 // verifies course.lecturer_id === auth.userId BEFORE doing any work.
@@ -147,7 +154,7 @@ export async function GET(request: NextRequest) {
     // Fetch all enrolled students for this course.
     const enrolled = await fetchEnrolledStudents(courseId);
 
-    // Fetch saved scores. If the student_scores table doesn't exist
+    // Fetch saved scores. If the student_grades table doesn't exist
     // (or any other query error), treat as "no scores yet" so the UI
     // still shows every enrolled student with zero scores.
     const scoreMap = new Map<
@@ -156,7 +163,7 @@ export async function GET(request: NextRequest) {
     >();
     try {
       const { data: scores, error: scoresError } = await db
-        .from('student_scores')
+        .from('student_grades')
         .select('*')
         .eq('course_id', courseId)
         .eq('semester_id', semesterId);
@@ -249,22 +256,26 @@ export async function POST(request: NextRequest) {
     const ownership = await verifyCourseOwnership(courseId, auth.userId);
     if (!ownership.ok) return ownership.response;
 
+    const total = caScore + examScore;
+
     // Attempt INSERT first. If duplicate-key error, fall back to UPDATE.
     const { data: inserted, error: insertError } = await db
-      .from('student_scores')
+      .from('student_grades')
       .insert({
         course_id: courseId,
         semester_id: semesterId,
         student_id: studentId,
         ca_score: caScore,
         exam_score: examScore,
+        total,
+        graded_by: auth.userId,
       })
       .select();
 
     if (insertError && insertError.message === 'DUPLICATE') {
       const { data: updated, error: updateError } = await db
-        .from('student_scores')
-        .update({ ca_score: caScore, exam_score: examScore })
+        .from('student_grades')
+        .update({ ca_score: caScore, exam_score: examScore, total, graded_by: auth.userId })
         .eq('course_id', courseId)
         .eq('semester_id', semesterId)
         .eq('student_id', studentId);
@@ -275,7 +286,7 @@ export async function POST(request: NextRequest) {
             {
               success: false,
               error:
-                'The student_scores table does not exist in the database. Please contact admin to create it.',
+                'The student_grades table does not exist in the database. Please contact admin to create it.',
             },
             { status: 500 }
           );
@@ -292,6 +303,7 @@ export async function POST(request: NextRequest) {
         student_id: studentId,
         ca_score: caScore,
         exam_score: examScore,
+        total,
       };
       const ca = Number(row.ca_score) || 0;
       const ex = Number(row.exam_score) || 0;
@@ -315,7 +327,7 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             error:
-              'The student_scores table does not exist in the database. Please contact admin to create it.',
+              'The student_grades table does not exist in the database. Please contact admin to create it.',
           },
           { status: 500 }
         );
@@ -332,6 +344,7 @@ export async function POST(request: NextRequest) {
       student_id: studentId,
       ca_score: caScore,
       exam_score: examScore,
+      total,
     };
     const ca = Number(row.ca_score) || 0;
     const ex = Number(row.exam_score) || 0;

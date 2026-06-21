@@ -62,6 +62,23 @@ export async function GET(request: NextRequest) {
       .select('*')
       .in('id', sessionIds);
 
+    // LEVEL FILTER: a session is targeted at a specific academic level
+    // (100/200/300/400/500). A 100-level student must NOT see 300-level
+    // sessions for their department — that would let them check in to a
+    // class they don't belong to. Filter sessions whose level matches the
+    // student's level. If the session has no level set (shouldn't happen
+    // since creation requires it), keep it (defensive).
+    const studentLevel = typeof student.level === 'number'
+      ? student.level
+      : parseInt(String(student.level ?? '0'), 10);
+    const filteredSessions = (sessions || []).filter((s: Record<string, unknown>) => {
+      const sessionLevel = typeof s.level === 'number'
+        ? s.level
+        : parseInt(String(s.level ?? '0'), 10);
+      // Keep session if its level is unset/0 OR matches the student's level.
+      return !sessionLevel || !studentLevel || sessionLevel === studentLevel;
+    });
+
     // Get attendance records for this student
     const { data: attendances } = await db
       .from('attendances')
@@ -72,9 +89,10 @@ export async function GET(request: NextRequest) {
       (attendances || []).map((a: Record<string, unknown>) => [a.session_id, a])
     );
 
-    // Fetch related data
-    const courseIds = [...new Set((sessions || []).map((s: Record<string, unknown>) => s.course_id as string).filter(Boolean))];
-    const venueIds = [...new Set((sessions || []).map((s: Record<string, unknown>) => s.venue_id as string).filter(Boolean))];
+    // Fetch related data — use the level-filtered session set so we don't
+    // pull courses/venues for sessions the student will never see.
+    const courseIds = [...new Set(filteredSessions.map((s: Record<string, unknown>) => s.course_id as string).filter(Boolean))];
+    const venueIds = [...new Set(filteredSessions.map((s: Record<string, unknown>) => s.venue_id as string).filter(Boolean))];
 
     const [coursesResult, venuesResult] = await Promise.all([
       courseIds.length > 0 ? db.from('courses').select('*').in('id', courseIds) : { data: [] },
@@ -88,11 +106,14 @@ export async function GET(request: NextRequest) {
       (venuesResult.data || []).map((v: Record<string, unknown>) => [v.id, v])
     );
 
-    // Get all session_departments for these sessions (to show full dept list)
-    const { data: allSessionDepts } = await db
-      .from('session_departments')
-      .select('*')
-      .in('session_id', sessionIds);
+    // Get all session_departments for these (level-filtered) sessions.
+    const filteredSessionIds = filteredSessions.map((s: Record<string, unknown>) => s.id as string);
+    const { data: allSessionDepts } = filteredSessionIds.length > 0
+      ? await db
+          .from('session_departments')
+          .select('*')
+          .in('session_id', filteredSessionIds)
+      : { data: [] };
 
     // Fetch departments for all session_departments
     const allDeptIds = [...new Set((allSessionDepts || []).map((sd: Record<string, unknown>) => sd.department_id as string).filter(Boolean))];
@@ -116,8 +137,8 @@ export async function GET(request: NextRequest) {
       sessionDeptMap.get(sid)!.push(rec);
     }
 
-    // Build sessions response
-    const result = (sessions || [])
+    // Build sessions response from the level-filtered set
+    const result = filteredSessions
       .map((session: Record<string, unknown>) => {
         const attendance = attendanceMap.get(session.id as string) as Record<string, unknown> | undefined;
         const course = courseMap.get(session.course_id as string) as Record<string, unknown> | undefined;

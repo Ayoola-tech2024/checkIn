@@ -1087,3 +1087,137 @@ Stage Summary:
 - **"Face activation not working" root cause**: TWO compounding bugs — (1) backend /api/student/activate crashed because INSFORGE_API_KEY was missing (fixed via .env restore), and (2) MediaPipe FaceMesh library failed to load in the browser due to Turbopack ChunkLoadError on dynamic import('@mediapipe/face_mesh') (fixed by switching to <script>-tag loading from self-hosted /wasm/ assets + window globals).
 - Files changed: `.env` (restored 3 env vars), `src/components/checkin/face-capture.tsx` (rewrote MediaPipe loading: dynamic import → script tags + window globals), `public/wasm/camera_utils.js` (new — copied from node_modules), `.zscripts/watchdog.sh` (new — restart script).
 - Verified end-to-end: student login works, activation flow renders, MediaPipe scripts load (HTTP 200, no ChunkLoadError), camera initialization is reached (only fails in headless due to no physical camera, which is expected).
+
+---
+Task ID: AUDIT-ADMIN-GRADING
+Agent: general-purpose (sub agent)
+Task: Audit & fix the checkIn admin-setup + grading/export flow end-to-end.
+
+Work Log:
+- Read worklog.md (Phases 1–5 + AUDIT-CONSOLIDATED + FIX-PREVIEW-FACE-ACTIVATION) for prior context. Key prior finding: per-student CA/exam scoring was listed as UNWRITTEN in AUDIT-CONSOLIDATED; a later phase added `/api/lecturer/grading/scores` + `/api/lecturer/grading/scores/batch` routes and a UI table in `grading-panel.tsx`, but they targeted a table called `student_scores` that DOES NOT EXIST in InsForge (the actual table is `student_grades` with a different schema). This was the central bug.
+- Audited every file listed in the task spec (admin/students, admin/csv-import, admin/lecturers, hod/lecturers, hod/courses, hod/assign, lecturer/grading, lecturer/grading/scores, lecturer/grading/scores/batch, lecturer/sessions, lecturer/export, grading-panel.tsx, export-panel.tsx, auth.ts, constants.ts, middleware.ts, auth-context.ts).
+- Cross-checked known issues #1–6 against current code:
+  * #1 CSV escaping — ALREADY FIXED. `export-panel.tsx:53-57` correctly doubles internal double-quotes and wraps every field. Verified with a 10-case unit test (O'Brien, "John ""Doc"" Smith", commas, newlines, null/undefined) + a full RFC 4180 round-trip parse: 10/10 pass, round-trip PASS.
+  * #2 grading-panel.tsx read-only — ALREADY FIXED. Has `Total Marks (100% attendance)` input (line 398-407), Save button (410-418), Calculate button (419-429, calls /api/lecturer/export to derive per-student attendance marks), and per-student CA/exam inputs (567-593) + Save Scores button (612-623).
+  * #3 grading/route.ts only persists course-level total_marks — Confirmed. Per-student attendance marks are NOT persisted; they are computed on-the-fly by /api/lecturer/export:153-158 as `(presentCount / totalSessions) × totalMarks`. This matches the user's spec ("lecturer assigns total marks for 100% attendance per course, system computes each student's attendance-based marks"). Per-student CA/exam scores are persisted in `student_grades` (see fix below).
+  * #4 auth.ts generateDefaultPassword — ALREADY FIXED. Returns surname.toUpperCase() (lines 29-37), with an `extractSurname` helper (44-48) for UI mirroring.
+  * #5 defaultPassword in cleartext API responses — Verified as INTENTIONAL. The password is per-account surname-based (NOT a global constant), so it must be relayed to the user by the admin/HOD who created the account. All three creation routes (admin/students, admin/lecturers, hod/lecturers, admin/csv-import) are middleware-protected (admin or hod role only) and the password is the user's own surname — no security risk.
+  * #6 HOD assign/courses ownership checks — PARTIALLY FIXED in prior work but TWO GAPS REMAINED. course_departments ownership was already verified for PATCH/DELETE on courses and for assign POST/DELETE. BUT: (a) `hod/assign/route.ts` POST had a comment saying "Verify the lecturer exists and belongs to the same department" but the code only checked existence, not department membership — a malicious HOD could assign any lecturer from another dept to a course in their own dept. (b) `hod/courses/route.ts` POST took `lecturerId` straight from the client body without verifying the lecturer belongs to the HOD's dept. (c) `hod/courses/route.ts` PATCH accepted a new `lecturerId` without any dept-ownership check.
+
+Fixes applied (all surgical, minimal-edit):
+1. `src/app/api/hod/assign/route.ts:53-67` — Added real lecturer-department verification. Now fetches the lecturer's `department_id`, compares to the HOD's `departmentId`, and returns 403 "You can only assign lecturers in your own department" on mismatch. Removed the duplicate `lecturer = lecturers[0]` line further down (now uses the same `targetLecturer` binding).
+2. `src/app/api/hod/courses/route.ts:128-159` (POST) — Before assigning `lecturerId` to the new course, fetches the lecturer's `department_id` and verifies it equals the HOD's `departmentId`. Returns 404 if the lecturer doesn't exist, 403 if they belong to a different dept.
+3. `src/app/api/hod/courses/route.ts:247-272` (PATCH) — When `lecturerId` is being changed (and is non-null), verifies the target lecturer's `department_id` equals `hodDeptId`. Null/empty `lecturerId` is allowed (means "unassign"). Always sets `updates.lecturer_id = lecturerId || null` so the column is properly nulled when unassigning.
+4. `src/app/api/lecturer/grading/scores/route.ts` — Rewired from nonexistent `student_scores` table to the actual `student_grades` table. The `student_grades` schema is `{ id, student_id, course_id, semester_id, ca_score, exam_score, total, graded_by, created_at, updated_at }`. Key changes:
+   - GET (line ~157-182): `db.from('student_grades')` instead of `'student_scores'`.
+   - POST (line ~259-362): computes `total = caScore + examScore` (no DB trigger), writes `graded_by: auth.userId` on INSERT and UPDATE, error messages now say "student_grades" not "student_scores".
+   - Updated header comment to document the real backing table & schema.
+5. `src/app/api/lecturer/grading/scores/batch/route.ts` — Same rewire: `student_scores` → `student_grades`. `upsertScore()` now takes a `gradedBy: string` parameter, computes `total = caScore + examScore`, sets `graded_by` on every INSERT/UPDATE. The caller passes `auth.userId` as `gradedBy`. Error messages updated.
+6. `student_grades` table — Confirmed pre-existing in InsForge. Verified its schema by inserting a probe row (then deleted). No DDL changes needed.
+
+Tests run:
+- `bun run lint` — CLEAN (no warnings, no errors) before AND after the fixes.
+- CSV escape unit test (`/tmp/csv_escape_test.mjs`) — 10/10 edge cases pass + RFC 4180 round-trip parse PASS. Covers O'Brien (apostrophe), `John "Doc" Smith` (embedded double-quotes), `Smith, John` (comma), `D'Artagnan "the Brave" de Tatigny` (mixed), empty/null/undefined, numeric, and embedded newlines.
+- End-to-end live API tests against http://127.0.0.1:3000:
+  * Admin login ✅
+  * CSV import with `O'Brien Adewale` + `Adebayo "Doc" Smith` → both imported, credentials returned with surname-based default passwords (`O'BRIEN`, `ADEBAYO`) ✅
+  * Lecturer login (c.nwosu@futa.edu.ng) ✅
+  * GET /api/lecturer/grading → returned lecturer's courses ✅
+  * POST /api/lecturer/grading (set totalMarks=100) → 200 ✅
+  * GET /api/lecturer/export → returned enrolled students with attendance marks computed (all 0 here because no sessions were held, but the formula `present/total × totalMarks` was confirmed in source) ✅
+  * GET /api/lecturer/grading/scores → BEFORE fix: returned 0s (table-missing swallowed). AFTER fix: returned real persisted scores ✅
+  * POST /api/lecturer/grading/scores/batch {ca=30, exam=50} → BEFORE fix: 500 "student_scores table does not exist". AFTER fix: `imported: 1, errors: []` ✅
+  * Re-fetch scores → `ca=30 exam=50 total=80` round-trips through `student_grades` ✅
+  * Export endpoint with embedded-quote name → JSON returns `Adebayo "Doc" Smith` verbatim; the client-side `escapeCsv` produces `"Adebayo ""Doc"" Smith"` (RFC 4180 compliant) ✅
+  * HOD assign security check — HOD of BIT assigning c.nwosu (also BIT) → 200 ✅. HOD of BIT assigning a test lecturer from EMT → 403 "You can only assign lecturers in your own department" ✅. Cleanup: test lecturer deleted.
+- All test data (2 test students, 1 test lecturer, 1 test student_grades row) was cleaned up after verification. DB is back to its pre-audit state (3 students, 2 lecturers, 1 HOD, 1 course).
+
+Stage Summary:
+- 5 bugs fixed across 4 files (all surgical):
+  * `src/app/api/hod/assign/route.ts` (lecturer-dept verification on POST)
+  * `src/app/api/hod/courses/route.ts` (lecturer-dept verification on POST + PATCH)
+  * `src/app/api/lecturer/grading/scores/route.ts` (rewired student_scores → student_grades; added graded_by + total)
+  * `src/app/api/lecturer/grading/scores/batch/route.ts` (same rewire; upsertScore takes gradedBy param)
+- Pre-existing items confirmed working (no fix needed):
+  * export-panel.tsx CSV escaping (RFC 4180 compliant)
+  * grading-panel.tsx per-student CA/exam UI
+  * auth.ts surname-based default password
+  * cleartext defaultPassword in API responses (intentional — middleware-protected, per-account surname)
+  * course_gradings.total_marks upsert in grading/route.ts (per-student marks derived at view time by export endpoint)
+  * course_departments ownership checks on PATCH/DELETE of courses and assign POST/DELETE (already present)
+- `bun run lint` clean after all fixes.
+- End-to-end admin → HOD → lecturer → grading/export flow verified live.
+- Files NOT touched (per instructions): face-capture.tsx, .env, insforge.ts.
+
+---
+Task ID: AUDIT-CHECKIN-FLOW
+Agent: general-purpose
+Task: Audit & fix check-in flow (session creation, collision, GPS, face comparison, similarity, analytics)
+
+Work Log:
+- Read worklog.md AUDIT-CONSOLIDATED (line 752) and FIX-PREVIEW-FACE-ACTIVATION (line 1065) sections to inherit prior context: InsForge (no Prisma), 4185-dim descriptors, end-session level filter, script-tag MediaPipe loading, restored .env.
+- Read every target file end-to-end (lecturer/sessions, start-session, end-session, student/check-in, student/sessions, lecturer/analytics, lib/geo, lib/face-utils, lib/constants, components/checkin/check-in-flow, middleware, lib/auth-context, lib/insforge, lib/session, lib/auth, student/activate).
+- Verified ALL 7 "known issues from prior audit" are ALREADY FIXED in the live code:
+  * Issue 1 (rejected_location HTTP status) → check-in/route.ts:154 already returns `{ status: 400 }`
+  * Issue 2 (start-session collision checks) → start-session/route.ts:90-185 implements venue + department overlap re-validation at start time (TOCTOU fix)
+  * Issue 3 (end-session level filter) → end-session/route.ts:124-148 applies level filter before marking absent
+  * Issue 4 (rejected_* treated as attended) → end-session/route.ts:9 defines `SUCCESSFUL_CHECKIN_STATUSES = new Set(['present', 'pending_review'])` — rejected_* students ARE included in absent list
+  * Issue 5 (descriptor length validation) → check-in/route.ts:35-41 validates incoming descriptor; :178-184 validates stored descriptor; activate/route.ts:95 + :112 validate at activation time. validateDescriptor (face-utils.ts:25-42) checks array shape, exact length 4185, finite values, [-2,2] range.
+  * Issue 6 (start-session hard-rejects missing GPS) → start-session/route.ts:42-47 returns 400 with clear "GPS coordinates are required" error
+  * Issue 7 (null-island rejection) → start-session/route.ts:14-23 `isWithinNigeria()` rejects (0,0) and out-of-bounds coords
+- Discovered & fixed 6 NEW bugs not on the prior-audit list:
+
+  **Bug A (student feed): src/app/api/student/sessions/route.ts:60-80**
+  Student sessions feed returned ALL sessions for the student's department regardless of session.level. A 100-level student would see 300-level sessions in their feed. Fixed by filtering the fetched sessions by `student.level === session.level` before building the response, and threading the filtered set through course/venue/session_departments fetches so we don't pull data for sessions the student will never see.
+
+  **Bug B (check-in level guard): src/app/api/student/check-in/route.ts:81-102**
+  The check-in route had no level enforcement — a 100-level student could POST a check-in to a 300-level session in their department (the feed filter is client-side, easy to bypass). Added a server-side level guard that rejects mismatched-level check-ins with HTTP 403, BEFORE doing any GPS/face work. Defensive: skips the check if either level is unset (0/NaN).
+
+  **Bug C (analytics denominator): src/app/api/lecturer/analytics/route.ts:104-128**
+  `totalTargetStudents` counted ALL students in the session's departments regardless of level, inflating the analytics denominator. Added a level filter so the count matches the level-filtered absentee sweep in end-session (denominator consistency). After fix: a 100-level session reports 3 target students (the 3 level-100 BIT students), not 4 (which would include the level-200 BIT student I added for testing).
+
+  **Bug D (lecturer sessions denominator): src/app/api/lecturer/sessions/route.ts:108-124**
+  Same issue as Bug C in the GET handler's per-session `totalTargetStudents` count. Reused `ensureIntLevel()` helper (already defined at line 5) and applied the same level-filter logic.
+
+  **Bug E (end-session batch insert conflict): src/app/api/lecturer/end-session/route.ts:102-210**
+  CRITICAL: when a session had a mix of students with no attendance row AND students with existing rejected_location/rejected_identity rows, the batch INSERT of absent rows would ATOMICALLY FAIL because the (student_id, session_id) unique constraint rejected the row for the student with an existing rejected_* attempt — and PostgREST treats batch inserts as all-or-nothing. The 2 NEW students (no row) never got their absent rows. The code's `if msg.includes('duplicate')` guard then treated the failure as idempotent and marked the session completed anyway, leaving the no-row students without ANY attendance record.
+  Fixed by partitioning the absent list into:
+    - `newAbsentStudents` (no existing row) → batch INSERT new absent rows
+    - `updateAbsentStudents` (existing rejected_*/absent row) → batch UPDATE only the `status` column to 'absent' via `.in('student_id', ids).eq('session_id', sessionId)` (preserves audit fields: check_in_time, selfie_data, similarity_score)
+  Added `absentStudentsCreated`, `absentStudentsUpdated`, `totalAbsentMarked` to the response payload for observability.
+
+  **Bug F (check-in GPS sanity): src/app/api/student/check-in/route.ts:43-74**
+  The check-in route accepted any studentLat/studentLng values (including NaN, strings, null-island 0,0, coords outside Nigeria) and silently produced a rejected_location row. This spammed the attendances table with junk rows and obscured real rejected attempts. Mirrored start-session's isWithinNigeria guard: now validates Number.isFinite, rejects (0,0) null-island with HTTP 400, rejects coords outside Nigeria's bounding box (4-14°N, 2-15°E) with HTTP 400. Parsed values (`parsedStudentLat`/`parsedStudentLng`) are now used consistently in the haversine call and the attendance row write.
+
+- Ran `bun run lint` after every fix → clean (no errors).
+- End-to-end live test (with crafted JWTs using SESSION_SECRET + InsForge direct DB access for test-data setup):
+  * Collision checks (TEST 1-2): venue+time overlap → 409; dept+time overlap → 409 ✓
+  * Start-session GPS validation (TEST 3-6): missing GPS → 400; (0,0) → 400; outside Nigeria (London 51.5,-0.1) → 400; valid FUTA Akure coords → 200 with status=active ✓
+  * Student sessions feed level filter (TEST 7): 100-level BIT student sees only the 100-level BIT session, NOT the 200-level EMT session ✓
+  * Check-in GPS (TEST 8-10): too far (334m vs 50m) → 400 rejected_location; (0,0) → 400 GPS error; outside Nigeria → 400 ✓
+  * Check-in level guard (TEST 11): 100-level student POSTing to active 200-level session → 403 ✓
+  * Check-in face similarity routing (TEST 12-17):
+    - matching descriptor → similarity 100.00 → present ✓
+    - already-checked-in student → 409 ✓
+    - slightly-perturbed descriptor → similarity 55.81 → present ✓
+    - random-different descriptor → similarity 49.76 → pending_review ✓
+    - anti-correlated descriptor → similarity 0.00 → rejected_identity ✓
+    - 5-element descriptor array → 400 "must contain exactly 4185 numbers" ✓
+  * End-session auto-absentee sweep (TEST 18b): mixed scenario with 1 existing rejected_identity + 2 students with no row → response `absentStudentsCreated: 2, absentStudentsUpdated: 1, totalAbsentMarked: 3`. Verified all 3 students have status='absent' in DB. The updated row preserved its original check_in_time and similarity_score=0 for audit ✓
+  * Analytics (TEST 19): presentCount=0, absentCount=3, pendingCount=0, rejectedCount=0, lateCount=0, totalTargetStudents=3, absentStudents list shows all 3 with correct matric/dept ✓
+  * Analytics level filter (TEST 19b): after adding a level-200 BIT student, totalTargetStudents remained 3 (the level-200 student is NOT counted for the level-100 session) ✓
+  * Lecturer sessions GET level filter (TEST 19c): level-200 EMT session shows totalTargetStudents=0 (no level-200 EMT students exist); level-100 BIT session shows totalTargetStudents=3 ✓
+- Cleaned up ALL test data (sessions, attendances, session_departments, test venue, level-200 test student, reset test student's activation/facial_data). DB restored to pre-audit state.
+
+Stage Summary:
+- All 7 prior-audit "known issues" were already fixed in the live code (no rework needed).
+- Fixed 6 NEW bugs (4 level-filter consistency bugs, 1 critical end-session batch-insert conflict, 1 check-in GPS sanity gap) across 5 files:
+  * src/app/api/student/sessions/route.ts (level filter on student feed)
+  * src/app/api/student/check-in/route.ts (level guard + GPS sanity checks)
+  * src/app/api/lecturer/analytics/route.ts (level filter on totalTargetStudents)
+  * src/app/api/lecturer/sessions/route.ts (level filter on per-session totalTargetStudents in GET)
+  * src/app/api/lecturer/end-session/route.ts (partition absent list into INSERT vs UPDATE to avoid atomic batch-INSERT conflict on (student_id, session_id) unique constraint)
+- `bun run lint` clean.
+- End-to-end live test of the FULL student check-in flow (session creation → collision checks → start-session with GPS → student feed → check-in with GPS + face similarity → end-session auto-absentee sweep → analytics) verified working for all branches: present (>50), pending_review (40-50), rejected_identity (<40), rejected_location (too far), level-mismatch rejection, GPS sanity rejection, descriptor-length validation, already-checked-in idempotency.
+- Files NOT touched (per instructions): face-capture.tsx, .env.
+- The check-in flow is now end-to-end correct and consistent across the 5 audited API routes. The level-filter fix in 4 places closes a logical loophole where a 100-level student could see/check-in to a 300-level session in the same department; the end-session batch-insert fix closes a silent data-loss bug where students without attendance records would never get marked absent if any peer had a rejected_* attempt.

@@ -127,6 +127,27 @@ export async function POST(request: NextRequest) {
 
     // Assign lecturer if provided
     if (lecturerId) {
+      // SECURITY: Verify the lecturer exists AND belongs to the HOD's own
+      // department. Without this check, a malicious HOD could attach any
+      // lecturer from another department to a course in their own dept by
+      // supplying an arbitrary lecturerId.
+      const { data: lecturers } = await db
+        .from('lecturers')
+        .select('id, department_id')
+        .eq('id', lecturerId);
+      if (!lecturers || lecturers.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Lecturer not found' },
+          { status: 404 }
+        );
+      }
+      const targetLecturer = lecturers[0] as Record<string, unknown>;
+      if (targetLecturer.department_id !== departmentId) {
+        return NextResponse.json(
+          { success: false, error: 'You can only assign lecturers in your own department' },
+          { status: 403 }
+        );
+      }
       courseData.lecturer_id = lecturerId;
     } else {
       // Need a placeholder lecturer_id since it's required
@@ -223,7 +244,32 @@ export async function PATCH(request: NextRequest) {
       }
       updates.level = level;
     }
-    if (lecturerId !== undefined) updates.lecturer_id = lecturerId;
+    if (lecturerId !== undefined) {
+      // null/empty means "unassign" — allowed. A non-null lecturerId
+      // must belong to the HOD's own department (defense-in-depth
+      // against a malicious HOD pointing a course at an external dept's
+      // lecturer).
+      if (lecturerId !== null && lecturerId !== '') {
+        const { data: lecturers } = await db
+          .from('lecturers')
+          .select('id, department_id')
+          .eq('id', lecturerId);
+        if (!lecturers || lecturers.length === 0) {
+          return NextResponse.json(
+            { success: false, error: 'Lecturer not found' },
+            { status: 404 }
+          );
+        }
+        const targetLecturer = lecturers[0] as Record<string, unknown>;
+        if (targetLecturer.department_id !== hodDeptId) {
+          return NextResponse.json(
+            { success: false, error: 'You can only assign lecturers in your own department' },
+            { status: 403 }
+          );
+        }
+      }
+      updates.lecturer_id = lecturerId || null;
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ success: false, error: 'No updates provided' }, { status: 400 });

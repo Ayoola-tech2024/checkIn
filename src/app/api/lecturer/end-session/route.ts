@@ -99,12 +99,24 @@ export async function POST(request: NextRequest) {
         .map((a) => a.student_id as string)
     );
 
+    // Students who already have ANY attendance row for this session
+    // (regardless of status). We need this to partition the absent list
+    // into INSERTs (no existing row) vs UPDATEs (existing rejected_* row)
+    // because the `attendances` table has a unique constraint on
+    // (student_id, session_id). A naive batch INSERT that mixes both
+    // groups will atomically fail on the first conflict, leaving the
+    // no-row students without an absent record.
+    const studentsWithExistingRow = new Set(
+      ((attendances || []) as Record<string, unknown>[])
+        .map((a) => a.student_id as string)
+    );
+
     // 3) Find all students in target departments (filtered by level) who did
     //    NOT have a successful check-in. The level filter prevents a 100-level
     //    session from marking 200/300/400/500-level students in the same
     //    department as absent.
     const sessionLevel = session.level as number | undefined;
-    let absentStudents: { id: string }[] = [];
+    const absentStudentList: { id: string }[] = [];
     if (deptIds.length > 0) {
       // InsForge/PostgREST does not support compound .in() + .eq() level filter
       // in a single chained call reliably across all versions, so we fetch by
@@ -121,27 +133,38 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      absentStudents = ((allDeptStudents || []) as Record<string, unknown>[])
-        .filter((s) => {
-          // Level filter: only mark students whose level matches the session.
-          // If the session has no level set, fall back to all department
-          // students (defensive — should not happen in practice).
-          if (sessionLevel !== undefined && sessionLevel !== null) {
-            const studentLevel = typeof s.level === 'number'
-              ? s.level
-              : parseInt(String(s.level ?? '0'), 10);
-            if (studentLevel !== sessionLevel) return false;
-          }
-          // Only mark absent if the student did NOT successfully check in.
-          return !successfulStudentIds.has(s.id as string);
-        })
-        .map((s) => ({ id: s.id as string }));
+      for (const s of (allDeptStudents || []) as Record<string, unknown>[]) {
+        // Level filter: only mark students whose level matches the session.
+        if (sessionLevel !== undefined && sessionLevel !== null) {
+          const studentLevel = typeof s.level === 'number'
+            ? s.level
+            : parseInt(String(s.level ?? '0'), 10);
+          if (studentLevel !== sessionLevel) continue;
+        }
+        // Only mark absent if the student did NOT successfully check in.
+        if (successfulStudentIds.has(s.id as string)) continue;
+        absentStudentList.push({ id: s.id as string });
+      }
     }
 
-    // 4) INSERT absent rows FIRST (before marking session completed). If this
-    //    fails, the session is still 'active' and the lecturer can retry.
-    if (absentStudents.length > 0) {
-      const absentInserts = absentStudents.map((student) => ({
+    // Partition the absent list:
+    //  - newAbsent: students with NO existing attendance row → INSERT new absent row
+    //  - updateAbsent: students with an existing rejected_* / absent row → UPDATE
+    //    the row's status to 'absent' (preserving audit fields like check_in_time,
+    //    selfie_data, similarity_score for forensic review).
+    const newAbsentStudents = absentStudentList.filter(
+      (s) => !studentsWithExistingRow.has(s.id)
+    );
+    const updateAbsentStudents = absentStudentList.filter(
+      (s) => studentsWithExistingRow.has(s.id)
+    );
+
+    // 4a) INSERT absent rows for students with no existing attendance row.
+    //     Done BEFORE marking the session completed. If this fails (and it's
+    //     not a duplicate-key idempotent retry), abort without marking the
+    //     session completed so the lecturer can retry.
+    if (newAbsentStudents.length > 0) {
+      const absentInserts = newAbsentStudents.map((student) => ({
         student_id: student.id,
         session_id: sessionId,
         status: 'absent',
@@ -163,6 +186,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 4b) UPDATE existing rejected_* / absent rows to 'absent' for students
+    //     whose only attendance record is a failed attempt. This is the
+    //     fix for the bug where a student with a rejected_location /
+    //     rejected_identity row would be lost in the batch-INSERT conflict
+    //     and never get a final 'absent' status. The PATCH only updates the
+    //     `status` column, preserving the original check_in_time,
+    //     selfie_data, and similarity_score for audit.
+    if (updateAbsentStudents.length > 0) {
+      const updateAbsentIds = updateAbsentStudents.map((s) => s.id);
+      const { error: updateAbsentError } = await db
+        .from('attendances')
+        .update({ status: 'absent' })
+        .in('student_id', updateAbsentIds)
+        .eq('session_id', sessionId);
+
+      if (updateAbsentError) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to finalize rejected attempts as absent. Session left active — please retry.' },
+          { status: 500 }
+        );
+      }
+    }
+
+    const totalAbsentMarked = newAbsentStudents.length + updateAbsentStudents.length;
+
     // 5) NOW mark the session as completed. If this fails after a successful
     //    absent-insert, the absent rows are still valid (idempotent on retry).
     const { error: updateError } = await db
@@ -182,9 +230,11 @@ export async function POST(request: NextRequest) {
       data: {
         id: sessionId,
         status: 'completed',
-        absentStudentsCreated: absentStudents.length,
+        absentStudentsCreated: newAbsentStudents.length,
+        absentStudentsUpdated: updateAbsentStudents.length,
+        totalAbsentMarked,
         totalSuccessfulCheckIns: successfulStudentIds.size,
-        totalAttendances: successfulStudentIds.size + absentStudents.length,
+        totalAttendances: successfulStudentIds.size + totalAbsentMarked,
       },
     });
   } catch (error) {

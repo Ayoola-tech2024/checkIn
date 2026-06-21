@@ -40,6 +40,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // SECURITY: Sanity-check student GPS coords. Reject null-island (0,0),
+    // non-numeric, and out-of-Nigeria coords up front with a 400, rather
+    // than silently creating a rejected_location row (which would spam the
+    // attendance table and obscure real attempts). Mirrors start-session's
+    // isWithinNigeria guard.
+    const parsedStudentLat = typeof studentLat === 'number'
+      ? studentLat
+      : parseFloat(String(studentLat));
+    const parsedStudentLng = typeof studentLng === 'number'
+      ? studentLng
+      : parseFloat(String(studentLng));
+    if (!Number.isFinite(parsedStudentLat) || !Number.isFinite(parsedStudentLng)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid GPS coordinates. Please enable location services and retry.' },
+        { status: 400 }
+      );
+    }
+    if (parsedStudentLat === 0 && parsedStudentLng === 0) {
+      return NextResponse.json(
+        { success: false, error: 'GPS coordinates unavailable (0,0). Please enable location services and retry.' },
+        { status: 400 }
+      );
+    }
+    if (
+      parsedStudentLat < 4 || parsedStudentLat > 14 ||
+      parsedStudentLng < 2 || parsedStudentLng > 15
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'GPS coordinates are outside Nigeria. Check-in is only available within Nigeria.' },
+        { status: 400 }
+      );
+    }
+
     // Get the student
     const { data: students } = await db.from('students').select('*').eq('id', studentId);
 
@@ -78,6 +111,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // LEVEL GUARD: a session is targeted at a specific academic level
+    // (e.g. 100, 200, 300). A student must NOT check in to a session whose
+    // level does not match their own — otherwise a 100-level student could
+    // mark attendance for a 300-level class in their department. This check
+    // is the server-side backstop for the level filter in the student
+    // sessions feed; the student's feed should never have shown them this
+    // session, but a determined client could still POST a check-in directly.
+    const sessionLevel = typeof session.level === 'number'
+      ? session.level
+      : parseInt(String(session.level ?? '0'), 10);
+    const studentLevel = typeof student.level === 'number'
+      ? student.level
+      : parseInt(String(student.level ?? '0'), 10);
+    if (sessionLevel && studentLevel && sessionLevel !== studentLevel) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `This session is for ${sessionLevel}-level students. Your level (${studentLevel}) does not match.`,
+        },
+        { status: 403 }
+      );
+    }
+
     // Check if already checked in
     const { data: existingAttendances } = await db
       .from('attendances')
@@ -113,8 +169,8 @@ export async function POST(request: NextRequest) {
     }
 
     const distance = haversineDistance(
-      studentLat,
-      studentLng,
+      parsedStudentLat,
+      parsedStudentLng,
       lecturerLat,
       lecturerLng
     );
@@ -126,8 +182,8 @@ export async function POST(request: NextRequest) {
       const attendanceData = {
         status: 'rejected_location',
         similarity_score: 0,
-        student_lat: studentLat,
-        student_lng: studentLng,
+        student_lat: parsedStudentLat,
+        student_lng: parsedStudentLng,
         selfie_data: selfieData || null,
         check_in_time: now,
       };
@@ -191,8 +247,8 @@ export async function POST(request: NextRequest) {
     const attendanceData = {
       status: attendanceStatus,
       similarity_score: similarityScore,
-      student_lat: studentLat,
-      student_lng: studentLng,
+      student_lat: parsedStudentLat,
+      student_lng: parsedStudentLng,
       selfie_data: selfieData || null,
       check_in_time: now,
     };

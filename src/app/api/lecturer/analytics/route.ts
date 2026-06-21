@@ -102,13 +102,29 @@ export async function GET(request: NextRequest) {
     });
 
     // Count total target students
+    // LEVEL FILTER: a session is targeted at a specific level. Only count
+    // students in the target departments whose level matches the session's
+    // level — otherwise totalTargetStudents would be inflated by students
+    // at other levels who are NOT eligible for this session (and would not
+    // be marked absent by end-session). Keeps the analytics denominator
+    // consistent with the absentee-sweep numerator.
+    const sessionLevel = typeof session.level === 'number'
+      ? session.level
+      : parseInt(String(session.level ?? '0'), 10);
     let totalTargetStudents = 0;
     if (deptIds.length > 0) {
       const { data: targetStudents } = await db
         .from('students')
-        .select('id')
+        .select('id, level')
         .in('department_id', deptIds);
-      totalTargetStudents = targetStudents?.length || 0;
+      totalTargetStudents = (targetStudents || []).filter((s: Record<string, unknown>) => {
+        // Defensive: if session has no level set, count all dept students.
+        if (!sessionLevel) return true;
+        const sLevel = typeof s.level === 'number'
+          ? s.level
+          : parseInt(String(s.level ?? '0'), 10);
+        return !sLevel || sLevel === sessionLevel;
+      }).length;
     }
 
     // Need department info for students in attendances

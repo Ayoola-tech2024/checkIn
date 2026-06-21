@@ -50,10 +50,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify the lecturer exists and belongs to the same department
+    // SECURITY: Verify the lecturer exists AND belongs to the HOD's own
+    // department. Without this check, a malicious HOD could assign any
+    // lecturer from another department to a course in their own dept by
+    // supplying an arbitrary lecturerId.
     const { data: lecturers } = await db.from('lecturers').select('id, name, department_id').eq('id', lecturerId);
     if (!lecturers || lecturers.length === 0) {
       return NextResponse.json({ success: false, error: 'Lecturer not found' }, { status: 404 });
+    }
+    const targetLecturer = lecturers[0] as Record<string, unknown>;
+    if (targetLecturer.department_id !== departmentId) {
+      return NextResponse.json(
+        { success: false, error: 'You can only assign lecturers in your own department' },
+        { status: 403 }
+      );
     }
 
     // Verify the course exists
@@ -69,7 +79,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    const lecturer = lecturers[0] as Record<string, unknown>;
     const course = courses[0] as Record<string, unknown>;
 
     return NextResponse.json({
@@ -78,7 +87,7 @@ export async function POST(request: NextRequest) {
         courseId,
         courseName: course.name,
         lecturerId,
-        lecturerName: lecturer.name,
+        lecturerName: targetLecturer.name,
       },
     });
   } catch (error) {

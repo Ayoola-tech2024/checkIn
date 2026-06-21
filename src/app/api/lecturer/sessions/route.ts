@@ -107,11 +107,20 @@ export async function GET(request: NextRequest) {
 
         let totalTargetStudents = 0;
         if (deptIdsForSession.length > 0) {
+          // LEVEL FILTER: only count students whose level matches the
+          // session's level — same logic as end-session's absentee sweep
+          // and analytics' totalTargetStudents. Keeps the per-session
+          // denominator consistent across the lecturer portal.
+          const sessionLevel = ensureIntLevel(session.level);
           const { data: targetStudents } = await db
             .from('students')
-            .select('id')
+            .select('id, level')
             .in('department_id', deptIdsForSession);
-          totalTargetStudents = targetStudents?.length || 0;
+          totalTargetStudents = (targetStudents || []).filter((s: Record<string, unknown>) => {
+            if (!sessionLevel) return true;
+            const sLevel = ensureIntLevel(s.level);
+            return !sLevel || sLevel === sessionLevel;
+          }).length;
         }
 
         const course = courseMap.get(session.course_id as string) as Record<string, unknown> | undefined;

@@ -7,6 +7,10 @@
 //   Upserts each score row individually (InsForge has no real
 //   transaction support). Returns { imported: N, errors: [...] }.
 //
+// The backing table is `student_grades` (NOT `student_scores`).
+// `graded_by` is set to auth.userId on every write; `total` is
+// computed by the API from ca_score + exam_score (no DB trigger).
+//
 // Defense-in-depth: handler calls getAuthUser(request) and verifies
 // course.lecturer_id === auth.userId BEFORE doing any work.
 
@@ -43,23 +47,27 @@ interface BatchScoreInput {
 async function upsertScore(
   courseId: string,
   semesterId: string,
+  gradedBy: string,
   input: BatchScoreInput
 ): Promise<{ id: string | null; studentId: string; caScore: number; examScore: number; total: number }> {
+  const total = input.caScore + input.examScore;
   const { data: inserted, error: insertError } = await db
-    .from('student_scores')
+    .from('student_grades')
     .insert({
       course_id: courseId,
       semester_id: semesterId,
       student_id: input.studentId,
       ca_score: input.caScore,
       exam_score: input.examScore,
+      total,
+      graded_by: gradedBy,
     })
     .select();
 
   if (insertError && insertError.message === 'DUPLICATE') {
     const { data: updated, error: updateError } = await db
-      .from('student_scores')
-      .update({ ca_score: input.caScore, exam_score: input.examScore })
+      .from('student_grades')
+      .update({ ca_score: input.caScore, exam_score: input.examScore, total, graded_by: gradedBy })
       .eq('course_id', courseId)
       .eq('semester_id', semesterId)
       .eq('student_id', input.studentId);
@@ -67,7 +75,7 @@ async function upsertScore(
     if (updateError) {
       if (isTableMissingError(String(updateError.message || ''))) {
         throw new Error(
-          'The student_scores table does not exist in the database. Please contact admin to create it.'
+          'The student_grades table does not exist in the database. Please contact admin to create it.'
         );
       }
       throw new Error(`Failed to update score for student ${input.studentId}`);
@@ -79,6 +87,7 @@ async function upsertScore(
       student_id: input.studentId,
       ca_score: input.caScore,
       exam_score: input.examScore,
+      total,
     };
     const ca = Number(row.ca_score) || 0;
     const ex = Number(row.exam_score) || 0;
@@ -94,7 +103,7 @@ async function upsertScore(
   if (insertError) {
     if (isTableMissingError(String(insertError.message || ''))) {
       throw new Error(
-        'The student_scores table does not exist in the database. Please contact admin to create it.'
+        'The student_grades table does not exist in the database. Please contact admin to create it.'
       );
     }
     throw new Error(`Failed to create score for student ${input.studentId}`);
@@ -106,6 +115,7 @@ async function upsertScore(
     student_id: input.studentId,
     ca_score: input.caScore,
     exam_score: input.examScore,
+    total,
   };
   const ca = Number(row.ca_score) || 0;
   const ex = Number(row.exam_score) || 0;
@@ -211,11 +221,11 @@ export async function POST(request: NextRequest) {
 
     for (const input of clean) {
       try {
-        await upsertScore(courseId, semesterId, input);
+        await upsertScore(courseId, semesterId, auth.userId, input);
         imported++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('student_scores table does not exist')) {
+        if (msg.includes('student_grades table does not exist')) {
           tableMissing = true;
           errors.push({ studentId: input.studentId, error: msg });
           // Stop looping — every subsequent call will fail the same way.
@@ -230,7 +240,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error:
-            'The student_scores table does not exist in the database. Please contact admin to create it.',
+            'The student_grades table does not exist in the database. Please contact admin to create it.',
           imported: 0,
           errors,
         },
