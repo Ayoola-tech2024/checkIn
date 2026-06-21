@@ -1221,3 +1221,32 @@ Stage Summary:
 - End-to-end live test of the FULL student check-in flow (session creation → collision checks → start-session with GPS → student feed → check-in with GPS + face similarity → end-session auto-absentee sweep → analytics) verified working for all branches: present (>50), pending_review (40-50), rejected_identity (<40), rejected_location (too far), level-mismatch rejection, GPS sanity rejection, descriptor-length validation, already-checked-in idempotency.
 - Files NOT touched (per instructions): face-capture.tsx, .env.
 - The check-in flow is now end-to-end correct and consistent across the 5 audited API routes. The level-filter fix in 4 places closes a logical loophole where a 100-level student could see/check-in to a 300-level session in the same department; the end-session batch-insert fix closes a silent data-loss bug where students without attendance records would never get marked absent if any peer had a rejected_* attempt.
+
+---
+Task ID: FIX-PASSWORD-SURNAME-CONVENTION
+Agent: main (Z.ai Code)
+Task: User flagged that the agreed password convention is SURNAME in block caps, but existing accounts still used the legacy `CheckIn@2024` hash. Migrate all accounts to surname-based passwords and fix the surname-extraction logic.
+
+Work Log:
+- Confirmed `src/lib/auth.ts:generateDefaultPassword` already returns surname-based password for NEW accounts, but existing accounts in the DB had legacy `CheckIn@2024` hashes (or NULL).
+- Verified via direct InsForge queries: 1 admin (Stack Dev), 2 lecturers (Prof. Chidi Nwosu, Dr. Adebayo Okonkwo), 3 students (Adebisi Oluwatobi BIT/25/0001, Imisi Samuel BIT/25/9971, Ayoola Damisile BIT/25/9975).
+- Bug 1: `extractSurname`/`generateDefaultPassword` used the FIRST token of the name as the surname. This broke on:
+  - Lecturers with titles: "Prof. Chidi Nwosu" → "PROF." (title) instead of "NWOSU" (surname)
+  - Students in "FirstName Surname" format: "Ayoola Damisile" → "AYOOLA" instead of "DAMISILE" (user's explicit example confirmed DAMISILE is the surname)
+- Fix: rewrote `extractSurname` in `src/lib/auth.ts` to (a) strip leading honorific titles (Prof, Dr, Mr, Mrs, Engr, Arc, Chief, etc. — case-insensitive, with/without trailing dot) and (b) take the LAST non-title token as the surname. This matches the Nigerian university naming convention "[Title] FirstName Surname" and the user's explicit example.
+- Created `scripts/migrate-passwords-to-surname.mjs` — a one-time, idempotent migration that fetches all admins/lecturers/students, computes the surname, bcrypt-hashes it (cost 12, matching auth.ts), and PATCHes the `password_hash` in InsForge. Handles the missing `matric_number` column on admins/lecturers.
+- Ran the migration twice: first to fix NULL hashes, second after the title-stripping fix. Final passwords:
+  - Admin: stackdev@futa.edu.ng (Stack Dev) → DEV
+  - Lecturer: c.nwosu@futa.edu.ng (Prof. Chidi Nwosu) → NWOSU
+  - Lecturer: a.okonkwo@futa.edu.ng (Dr. Adebayo Okonkwo) → OKONKWO
+  - Student: BIT/25/0001 (Adebisi Oluwatobi) → OLUWATOBI
+  - Student: BIT/25/9971 (Imisi Samuel) → SAMUEL
+  - Student: BIT/25/9975 (Ayoola Damisile) → DAMISILE  ← matches user's explicit example
+- Verified all 6 logins succeed via the /api/auth/login endpoint.
+- Lint clean.
+
+Stage Summary:
+- All existing accounts now use the agreed surname-in-block-caps password convention.
+- The surname-extraction logic in auth.ts now correctly handles honorific titles (Prof., Dr., etc.) and uses the last token as the surname, matching the Nigerian "[Title] FirstName Surname" convention and the user's "DAMISILE" example.
+- New accounts created via admin/HOD routes will automatically get the correct surname-based default password.
+- Migration script preserved at scripts/migrate-passwords-to-surname.mjs for future use (idempotent).
