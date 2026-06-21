@@ -14,6 +14,53 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MAX_SELFIE_SIZE_KB } from '@/lib/constants';
 import { landmarksToDescriptor, compressCanvasImage } from '@/lib/face-utils';
 
+// ============================================================
+// MediaPipe script loading
+// ----------------------------------------------------------------
+// The `@mediapipe/face_mesh` and `@mediapipe/camera_utils` packages
+// ship UMD bundles that Turbopack cannot load as ESM async chunks
+// (throws ChunkLoadError at runtime). We therefore load the same
+// self-hosted files from /public/wasm/ via plain <script> tags and
+// access the constructors from the global scope. This is also how
+// MediaPipe is designed to be consumed in browser environments.
+// ============================================================
+declare global {
+  interface Window {
+    FaceMesh?: new (config: { locateFile: (file: string) => string }) => {
+      setOptions: (opts: Record<string, unknown>) => void;
+      onResults: (cb: (results: any) => void) => void;
+      send: (input: { image: HTMLVideoElement }) => Promise<void>;
+      close: () => void;
+    };
+    Camera?: new (
+      video: HTMLVideoElement,
+      config: { onFrame: () => Promise<void>; width: number; height: number }
+    ) => { start: () => Promise<void>; stop: () => void };
+  }
+}
+
+const loadedScripts = new Map<string, Promise<void>>();
+
+function loadScript(src: string): Promise<void> {
+  if (loadedScripts.has(src)) return loadedScripts.get(src)!;
+  const promise = new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)));
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  });
+  loadedScripts.set(src, promise);
+  return promise;
+}
+
 interface FaceCaptureProps {
   onCapture: (data: { selfieData: string; facialDescriptor: number[] }) => void;
   mode: 'activation' | 'checkin';
@@ -105,16 +152,21 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
   const eyeClosedAtRef = useRef<number | null>(null);
   const lastBlinkTimeRef = useRef<number>(0);
 
-  // Load MediaPipe FaceMesh
+  // Load MediaPipe FaceMesh (via self-hosted script tags — see header)
   const loadFaceMesh = useCallback(async (): Promise<any> => {
     if (faceMeshRef.current) return faceMeshRef.current;
 
     try {
       setStatus('loading-model');
 
-      const { FaceMesh } = await import('@mediapipe/face_mesh');
+      // Load the UMD solution script; it assigns window.FaceMesh.
+      await loadScript('/wasm/face_mesh.js');
+      const FaceMeshCtor = window.FaceMesh;
+      if (!FaceMeshCtor) {
+        throw new Error('FaceMesh global not found after script load');
+      }
 
-      const faceMesh = new FaceMesh({
+      const faceMesh = new FaceMeshCtor({
         locateFile: (file: string) => {
           // SELF-HOSTED: serve MediaPipe WASM + model binaries from /wasm/
           // instead of the jsdelivr CDN. Eliminates the runtime external-
@@ -135,7 +187,7 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
       return faceMesh;
     } catch (error) {
       console.error('Failed to load MediaPipe FaceMesh:', error);
-      setErrorMessage('Failed to load face detection model. Please try again.');
+      setErrorMessage('Failed to load face detection model. Please refresh the page and try again.');
       setStatus('error');
       return null;
     }
@@ -242,7 +294,12 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
       faceMesh.onResults(onResults);
       setStatus('camera-starting');
 
-      const { Camera: MPCamera } = await import('@mediapipe/camera_utils');
+      // Load the camera-utils UMD script; it assigns window.Camera.
+      await loadScript('/wasm/camera_utils.js');
+      const MPCamera = window.Camera;
+      if (!MPCamera) {
+        throw new Error('Camera utils global not found after script load');
+      }
 
       if (videoRef.current) {
         const camera = new MPCamera(videoRef.current, {
