@@ -152,15 +152,17 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
   const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Fetch venues and departments when dialog opens
+  // Fetch venues and departments when dialog opens.
+  // NOTE: must use /api/lecturer/* endpoints — the /api/admin/* routes
+  // are blocked by the middleware ROLE_RULES for lecturer/hod roles.
   useEffect(() => {
     if (open) {
-      fetch('/api/admin/venues')
+      fetch('/api/lecturer/venues')
         .then((r) => r.json())
         .then((json) => { if (json.success) setVenues(json.data); })
         .catch(() => toast.error('Failed to load venues'));
 
-      fetch('/api/admin/departments')
+      fetch('/api/lecturer/departments')
         .then((r) => r.json())
         .then((json) => { if (json.success) setDepartments(json.data); })
         .catch(() => toast.error('Failed to load departments'));

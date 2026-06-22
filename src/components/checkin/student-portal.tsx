@@ -118,6 +118,20 @@ function ActivationFlow() {
   const [activating, setActivating] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Refs to hold the latest email/password so the face-capture callback
+  // (which is passed down to <FaceCapture> and must keep a STABLE identity
+  // to avoid re-mounting the camera mid-stream) always reads the CURRENT
+  // values. Without this, the empty-deps `handleFaceCapture` would close
+  // over the INITIAL `activateAccount`, which itself closed over the
+  // INITIAL empty `email`/`password` — producing the "Email and password
+  // are required" 400 even after the user filled in both fields.
+  const emailRef = useRef(email);
+  const passwordRef = useRef(password);
+  const userIdRef = useRef(user?.id);
+  useEffect(() => { emailRef.current = email; }, [email]);
+  useEffect(() => { passwordRef.current = password; }, [password]);
+  useEffect(() => { userIdRef.current = user?.id; }, [user?.id]);
+
   const validateEmailStep = useCallback(() => {
     const newErrors: Record<string, string> = {};
     if (!email.trim()) {
@@ -152,15 +166,37 @@ function ActivationFlow() {
       setFaceData(data);
       setStep('processing');
 
-      // Call activate API
+      // Call activate API — reads the LATEST email/password/userId from refs
+      // so this stable-identity callback never closes over stale state.
       activateAccount(data);
     },
-    []
+    [] // intentionally empty — activateAccount reads from refs internally
   );
 
   const activateAccount = useCallback(
     async (data: { selfieData: string; facialDescriptor: number[] }) => {
-      if (!user?.id) return;
+      // Read the CURRENT values from refs, NOT from closure-captured state.
+      // This is the fix for the "Email and password are required" bug: the
+      // face-capture callback is memoised with [] deps (so it keeps a stable
+      // identity and doesn't re-mount the MediaPipe camera), which means it
+      // would otherwise close over the INITIAL empty email/password.
+      const currentUser = userIdRef.current;
+      const currentEmail = emailRef.current;
+      const currentPassword = passwordRef.current;
+
+      if (!currentUser) {
+        toast.error('Session expired. Please log in again.');
+        setStep('email');
+        setFaceData(null);
+        return;
+      }
+
+      if (!currentEmail.trim() || !currentPassword) {
+        toast.error('Email and password are required. Please go back and fill them in.');
+        setStep('email');
+        setFaceData(null);
+        return;
+      }
 
       setActivating(true);
 
@@ -169,9 +205,9 @@ function ActivationFlow() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            studentId: user.id,
-            email,
-            password,
+            studentId: currentUser,
+            email: currentEmail,
+            password: currentPassword,
             facialData: JSON.stringify({ descriptor: data.facialDescriptor }),
             selfieData: data.selfieData,
           }),
@@ -183,7 +219,7 @@ function ActivationFlow() {
           setStep('complete');
           updateUser({
             activated: true,
-            email,
+            email: currentEmail,
           });
           toast.success('Account activated successfully!');
         } else {
@@ -199,7 +235,7 @@ function ActivationFlow() {
         setActivating(false);
       }
     },
-    [user?.id, email, password, updateUser]
+    [updateUser]
   );
 
   const handleFaceError = useCallback((error: string) => {
