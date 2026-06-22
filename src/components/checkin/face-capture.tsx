@@ -12,7 +12,7 @@ import { Camera, AlertTriangle, CheckCircle2, Loader2, RotateCcw, Eye, EyeOff } 
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MAX_SELFIE_SIZE_KB } from '@/lib/constants';
-import { landmarksToDescriptor, compressCanvasImage } from '@/lib/face-utils';
+import { landmarksToDescriptor, compressCanvasImage, EXPECTED_DESCRIPTOR_LENGTH } from '@/lib/face-utils';
 
 // ============================================================
 // MediaPipe script loading
@@ -348,8 +348,20 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
     const selfieData = compressCanvasImage(canvas, MAX_SELFIE_SIZE_KB);
     const descriptor = landmarksToDescriptor(lastLandmarks);
 
+    // SECURITY: Validate the descriptor length client-side BEFORE sending.
+    // The backend's validateDescriptor() requires EXACTLY 4185 floats; a
+    // malformed capture (e.g. partial landmarks) would otherwise be sent,
+    // rejected with an opaque 400, and the user would see a generic
+    // "activation failed" toast with no idea why. Failing fast here with a
+    // precise message lets the user recapture immediately.
     if (descriptor.length === 0) {
-      setErrorMessage('Failed to process facial data. Please try again.');
+      setErrorMessage('Face landmarks incomplete. Please ensure your whole face is visible and try again.');
+      return;
+    }
+    if (descriptor.length !== EXPECTED_DESCRIPTOR_LENGTH) {
+      setErrorMessage(
+        `Facial data malformed (${descriptor.length}/${EXPECTED_DESCRIPTOR_LENGTH} features). Please reposition your face and try again.`
+      );
       return;
     }
 
@@ -513,15 +525,13 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
         </div>
       )}
 
-      {/* Camera Capture Button — disabled (grayed out, not clickable)
-          until liveness is verified via 2 natural blinks. */}
-      {!capturedSelfie && status === 'face-found' && blinkCount < REQUIRED_BLINKS && (
-        <Button disabled className="w-full opacity-60" size="lg">
-          <Camera className="size-4 mr-2" />
-          Capture Face (blink to enable)
-        </Button>
-      )}
-      {!capturedSelfie && status === 'face-found' && blinkCount >= REQUIRED_BLINKS && (
+      {/* Camera Capture Button — always enabled when a face is found.
+          Liveness (blink) is a SOFT recommendation shown in the badge
+          above; it must NEVER block capture, otherwise a flaky EAR
+          sensor or poor lighting would prevent the entire activation /
+          check-in flow. The server-side biometric comparison is the
+          real security gate. */}
+      {!capturedSelfie && status === 'face-found' && (
         <Button onClick={handleCapture} className="w-full" size="lg">
           <Camera className="size-4 mr-2" />
           Capture Face

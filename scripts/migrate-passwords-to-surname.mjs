@@ -18,7 +18,7 @@
 import bcrypt from 'bcryptjs';
 
 const BASE = 'https://9djdhppd.us-east.insforge.app/api/database/records';
-const KEY = 'ik_39c8cf61aaa8029228324329603f0f49';
+const KEY = '[REDACTED]';
 const SALT_ROUNDS = 12; // matches src/lib/auth.ts
 
 const headers = {
