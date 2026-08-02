@@ -1,6 +1,25 @@
 // ============================================================
-// checkIn - Geographic Distance Utilities
+// checkIn - Geographic Utilities
 // ============================================================
+// Nigeria geographic bounding box (approximate, generous bounds).
+// Latitude: 4°N (Gulf of Guinea) to 14°N (Niger border)
+// Longitude: 2°E (Benin border) to 15°E (Cameroon border)
+// Shared by start-session and check-in routes so they stay in sync.
+export const NIGERIA_LAT_MIN = 4;
+export const NIGERIA_LAT_MAX = 14;
+export const NIGERIA_LNG_MIN = 2;
+export const NIGERIA_LNG_MAX = 15;
+
+export function isWithinNigeria(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= NIGERIA_LAT_MIN &&
+    lat <= NIGERIA_LAT_MAX &&
+    lng >= NIGERIA_LNG_MIN &&
+    lng <= NIGERIA_LNG_MAX
+  );
+}
 
 import type { GeoPosition } from './types';
 

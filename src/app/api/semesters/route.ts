@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Reference data — any authenticated user may read the semester list
+    // (used by lecturer grading/export dropdowns). Middleware enforces
+    // authentication; we just need to confirm a session exists.
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     const { data: semesters, error } = await db
       .from('semesters')
       .select('*')
@@ -37,6 +48,22 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Creating semesters is an admin-only operation. This route sits
+    // outside the /api/admin/ role-prefix rule, so enforce explicitly.
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    if (auth.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'Insufficient permissions' },
+        { status: 403 }
+      );
+    }
+
     const { name, startDate, endDate } = await request.json();
 
     if (!name || !startDate || !endDate) {

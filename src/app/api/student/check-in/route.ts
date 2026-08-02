@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
-import { haversineDistance } from '@/lib/geo';
+import { haversineDistance, isWithinNigeria } from '@/lib/geo';
 import { calculateSimilarity, getAttendanceStatusFromSimilarity, validateDescriptor } from '@/lib/face-utils';
 import { getAuthUser } from '@/lib/auth-context';
 
@@ -63,10 +63,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (
-      parsedStudentLat < 4 || parsedStudentLat > 14 ||
-      parsedStudentLng < 2 || parsedStudentLng > 15
-    ) {
+if (!isWithinNigeria(parsedStudentLat, parsedStudentLng)) {
       return NextResponse.json(
         { success: false, error: 'GPS coordinates are outside Nigeria. Check-in is only available within Nigeria.' },
         { status: 400 }
@@ -111,28 +108,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // LEVEL GUARD: a session is targeted at a specific academic level
-    // (e.g. 100, 200, 300). A student must NOT check in to a session whose
-    // level does not match their own — otherwise a 100-level student could
-    // mark attendance for a 300-level class in their department. This check
-    // is the server-side backstop for the level filter in the student
-    // sessions feed; the student's feed should never have shown them this
-    // session, but a determined client could still POST a check-in directly.
-    const sessionLevel = typeof session.level === 'number'
-      ? session.level
-      : parseInt(String(session.level ?? '0'), 10);
-    const studentLevel = typeof student.level === 'number'
-      ? student.level
-      : parseInt(String(student.level ?? '0'), 10);
-    if (sessionLevel && studentLevel && sessionLevel !== studentLevel) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `This session is for ${sessionLevel}-level students. Your level (${studentLevel}) does not match.`,
-        },
-        { status: 403 }
-      );
-    }
+// LEVEL GUARD: a session is targeted at a specific academic level
+	    // (e.g. 100, 200, 300). A student must NOT check in to a session whose
+	    // level does not match their own — otherwise a 100-level student could
+	    // mark attendance for a 300-level class in their department. This check
+	    // is the server-side backstop for the level filter in the student
+	    // sessions feed; the student's feed should never have shown them this
+	    // session, but a determined client could still POST a check-in directly.
+	    //
+	    // Uses -1 as sentinel for "not set" (null/undefined/missing) so that
+	    // the falsy-0 trap is avoided: a 0 from parseInt("0") or a 0-level
+	    // record would previously skip the guard entirely.
+	    function toLevel(v: unknown): number {
+	      if (typeof v === 'number') return v;
+	      if (typeof v === 'string') { const p = parseInt(v, 10); return isNaN(p) ? -1 : p; }
+	      return -1;
+	    }
+	    const sessionLevel = toLevel(session.level);
+	    const studentLevel = toLevel(student.level);
+	    if (sessionLevel > 0 && studentLevel > 0 && sessionLevel !== studentLevel) {
+	      return NextResponse.json(
+	        {
+	          success: false,
+	          error: `This session is for ${sessionLevel}-level students. Your level (${studentLevel}) does not match.`,
+	        },
+	        { status: 403 }
+	      );
+	    }
 
     // Check if already checked in
     const { data: existingAttendances } = await db

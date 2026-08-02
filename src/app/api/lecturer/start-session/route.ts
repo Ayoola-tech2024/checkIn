@@ -1,26 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { getAuthUser } from '@/lib/auth-context';
-
-// Nigeria geographic bounding box (approximate, generous bounds).
-// Latitude: 4°N (Gulf of Guinea) to 14°N (Niger border)
-// Longitude: 2°E (Benin border) to 15°E (Cameroon border)
-// Rejects (0,0) null island and clearly invalid coordinates.
-const NIGERIA_LAT_MIN = 4;
-const NIGERIA_LAT_MAX = 14;
-const NIGERIA_LNG_MIN = 2;
-const NIGERIA_LNG_MAX = 15;
-
-function isWithinNigeria(lat: number, lng: number): boolean {
-  return (
-    Number.isFinite(lat) &&
-    Number.isFinite(lng) &&
-    lat >= NIGERIA_LAT_MIN &&
-    lat <= NIGERIA_LAT_MAX &&
-    lng >= NIGERIA_LNG_MIN &&
-    lng <= NIGERIA_LNG_MAX
-  );
-}
+import { isWithinNigeria } from '@/lib/geo';
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,16 +19,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // SECURITY: Require real GPS coordinates — no venue fallback.
-    if (lecturerLat === undefined || lecturerLng === undefined || isNaN(parseFloat(lecturerLat)) || isNaN(parseFloat(lecturerLng))) {
-      return NextResponse.json(
-        { success: false, error: 'GPS coordinates are required to start a session. Please enable location services.' },
-        { status: 400 }
-      );
-    }
-
-    const finalLat = parseFloat(lecturerLat);
-    const finalLng = parseFloat(lecturerLng);
+// SECURITY: Require real GPS coordinates — no venue fallback.
+	    const parsedLat = typeof lecturerLat === 'number' ? lecturerLat : parseFloat(String(lecturerLat));
+	    const parsedLng = typeof lecturerLng === 'number' ? lecturerLng : parseFloat(String(lecturerLng));
+	    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+	      return NextResponse.json(
+	        { success: false, error: 'GPS coordinates are required to start a session. Please enable location services.' },
+	        { status: 400 }
+	      );
+	    }
+	
+	    const finalLat = parsedLat;
+	    const finalLng = parsedLng;
 
     // SECURITY: Sanity-check the GPS coords against Nigeria's bounding box.
     // Rejects (0, 0) null island and obviously fake coordinates.

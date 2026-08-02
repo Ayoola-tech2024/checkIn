@@ -199,12 +199,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const scheduledDate = new Date(scheduledAt);
-    const duration = durationMinutes || 15;
-    const threshold = distanceThreshold || 50;
-    const sessionEnd = new Date(scheduledDate.getTime() + duration * 60000);
-
-    // ===== VALIDATION: Venue concurrency guardrail =====
+const scheduledDate = new Date(scheduledAt);
+	    const duration = durationMinutes != null && durationMinutes > 0 ? durationMinutes : 15;
+	    const threshold = distanceThreshold != null ? distanceThreshold : 50;
+	    const sessionEnd = new Date(scheduledDate.getTime() + duration * 60000);
+	
+	    // ===== VALIDATION: Referenced entities exist =====
+	    const [courseCheck, venueCheck, deptCheck] = await Promise.all([
+	      db.from('courses').select('id').eq('id', courseId),
+	      db.from('venues').select('id').eq('id', venueId),
+	      departmentIds.length > 0 ? db.from('departments').select('id').in('id', departmentIds) : { data: [] },
+	    ]);
+	
+	    if (!courseCheck.data || courseCheck.data.length === 0) {
+	      return NextResponse.json(
+	        { success: false, error: 'Course not found. Please select a valid course.' },
+	        { status: 400 }
+	      );
+	    }
+	    if (!venueCheck.data || venueCheck.data.length === 0) {
+	      return NextResponse.json(
+	        { success: false, error: 'Venue not found. Please select a valid venue.' },
+	        { status: 400 }
+	      );
+	    }
+	    if (departmentIds.length > 0) {
+	      const foundDeptIds = new Set((deptCheck.data || []).map((d: Record<string, unknown>) => d.id as string));
+	      const missingDeptIds = departmentIds.filter((id: string) => !foundDeptIds.has(id));
+	      if (missingDeptIds.length > 0) {
+	        return NextResponse.json(
+	          { success: false, error: `Department(s) not found: ${missingDeptIds.join(', ')}` },
+	          { status: 400 }
+	        );
+	      }
+	    }
+	
+	    // ===== VALIDATION: Venue concurrency guardrail =====
     const { data: venueSessions } = await db
       .from('sessions')
       .select('*')
@@ -361,14 +391,26 @@ export async function POST(request: NextRequest) {
 
     const session = sessions[0] as Record<string, unknown>;
 
-    // Create session_department links
-    if (departmentIds.length > 0) {
-      const sessionDeptInserts = departmentIds.map((departmentId: string) => ({
-        session_id: session.id,
-        department_id: departmentId,
-      }));
-      await db.from('session_departments').insert(sessionDeptInserts);
-    }
+// Create session_department links
+	    // SECURITY: This is the last DB write before the response. If it fails,
+	    // the session already exists in `sessions` with no department links,
+	    // making it invisible to every student. We therefore delete the orphan
+	    // session and return the error to the caller.
+	    if (departmentIds.length > 0) {
+	      const sessionDeptInserts = departmentIds.map((departmentId: string) => ({
+	        session_id: session.id,
+	        department_id: departmentId,
+	      }));
+	      const { error: sdError } = await db.from('session_departments').insert(sessionDeptInserts);
+	      if (sdError) {
+	        // Attempt to roll back the orphan session
+	        await db.from('sessions').delete().eq('id', session.id as string).catch(() => {});
+	        return NextResponse.json(
+	          { success: false, error: 'Failed to link departments to session. Please try again.' },
+	          { status: 500 }
+	        );
+	      }
+	    }
 
     // Fetch related data for response
     const [courseResult, venueResult] = await Promise.all([

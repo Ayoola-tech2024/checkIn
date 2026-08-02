@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
+import { getAuthUser } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
+    // AUTHORIZATION: middleware guarantees the caller is authenticated,
+    // but this route sits outside the /api/admin|hod|lecturer|student/
+    // role-prefix rules, so enforce the role explicitly here. Students
+    // must not be able to enumerate the full student body.
+    const auth = getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    if (auth.role === 'student') {
+      return NextResponse.json(
+        { success: false, error: 'Insufficient permissions' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const departmentId = searchParams.get('departmentId');
 
