@@ -71,6 +71,108 @@ export function isWithinRadius(
 }
 
 /**
+ * Calculate effective distance considering GPS measurement accuracy margin.
+ * Subtracts student GPS accuracy (up to a max discount limit) so indoor
+ * GPS attenuation does not cause false rejections.
+ */
+export function calculateEffectiveDistance(
+  studentLat: number,
+  studentLng: number,
+  studentAccuracy: number | undefined,
+  targetLat: number,
+  targetLng: number
+): { rawDistance: number; effectiveDistance: number; accuracyDiscount: number } {
+  const rawDistance = haversineDistance(studentLat, studentLng, targetLat, targetLng);
+  // Cap accuracy discount at 35m to prevent extreme location spoofing
+  const accuracyDiscount = Math.min(35, Math.max(0, studentAccuracy ?? 0));
+  const effectiveDistance = Math.max(0, rawDistance - accuracyDiscount);
+
+  return {
+    rawDistance: Math.round(rawDistance * 100) / 100,
+    effectiveDistance: Math.round(effectiveDistance * 100) / 100,
+    accuracyDiscount: Math.round(accuracyDiscount * 100) / 100,
+  };
+}
+
+/**
+ * Dual-anchor geofence check: validates student position against BOTH the
+ * lecturer's live GPS coordinates AND the venue's static physical center.
+ * Validation succeeds if student is within threshold of EITHER anchor.
+ */
+export function isWithinVenueOrLecturer(
+  studentLat: number,
+  studentLng: number,
+  studentAccuracy: number | undefined,
+  lecturerPos: { lat: number | null; lng: number | null } | null,
+  venuePos: { lat: number | null; lng: number | null } | null,
+  maxRadiusMeters: number
+): {
+  within: boolean;
+  bestDistance: number;
+  rawDistance: number;
+  accuracyDiscount: number;
+  anchorUsed: 'lecturer' | 'venue' | 'none';
+  message: string;
+} {
+  let bestEffective = Infinity;
+  let bestRaw = Infinity;
+  let bestDiscount = 0;
+  let bestAnchor: 'lecturer' | 'venue' | 'none' = 'none';
+
+  if (lecturerPos && Number.isFinite(lecturerPos.lat) && Number.isFinite(lecturerPos.lng)) {
+    const calc = calculateEffectiveDistance(
+      studentLat,
+      studentLng,
+      studentAccuracy,
+      lecturerPos.lat!,
+      lecturerPos.lng!
+    );
+    if (calc.effectiveDistance < bestEffective) {
+      bestEffective = calc.effectiveDistance;
+      bestRaw = calc.rawDistance;
+      bestDiscount = calc.accuracyDiscount;
+      bestAnchor = 'lecturer';
+    }
+  }
+
+  if (venuePos && Number.isFinite(venuePos.lat) && Number.isFinite(venuePos.lng)) {
+    const calc = calculateEffectiveDistance(
+      studentLat,
+      studentLng,
+      studentAccuracy,
+      venuePos.lat!,
+      venuePos.lng!
+    );
+    if (calc.effectiveDistance < bestEffective) {
+      bestEffective = calc.effectiveDistance;
+      bestRaw = calc.rawDistance;
+      bestDiscount = calc.accuracyDiscount;
+      bestAnchor = 'venue';
+    }
+  }
+
+  const within = bestEffective <= maxRadiusMeters;
+
+  let message = '';
+  if (within) {
+    message = `Location verified (${bestEffective}m away from ${bestAnchor === 'lecturer' ? 'lecturer' : 'venue'}).`;
+  } else if (bestAnchor !== 'none') {
+    message = `Too far from session location (${bestEffective}m vs ${maxRadiusMeters}m required).`;
+  } else {
+    message = 'Session location unavailable. Lecturer must start session with GPS or select a valid venue.';
+  }
+
+  return {
+    within,
+    bestDistance: bestEffective === Infinity ? 0 : bestEffective,
+    rawDistance: bestRaw === Infinity ? 0 : bestRaw,
+    accuracyDiscount: bestDiscount,
+    anchorUsed: bestAnchor,
+    message,
+  };
+}
+
+/**
  * Format distance for display
  */
 export function formatDistance(meters: number): string {

@@ -19,8 +19,15 @@ export const metadata: Metadata = {
   description: "High-performance student attendance platform optimized for large lecture environments with biometric verification and GPS validation.",
   keywords: ["attendance", "checkIn", "student", "biometric", "education"],
   authors: [{ name: "checkIn" }],
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "checkIn",
+  },
   icons: {
     icon: "/logo.svg",
+    apple: "/icon-192x192.png",
   },
 };
 
@@ -31,6 +38,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <meta name="theme-color" content="#0f172a" />
+        <link rel="manifest" href="/manifest.json" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
@@ -43,6 +54,17 @@ export default function RootLayout({
           {children}
           <Toaster position="top-right" richColors closeButton />
         </ThemeProvider>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function() {});
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );

@@ -73,7 +73,9 @@ export function calculateSimilarity(
   }
 
   const cosineSim = dotProduct / (mag1 * mag2);
-  const similarity = Math.max(0, Math.min(100, (cosineSim + 1) * 50));
+  // Cosine similarity for normalized landmark feature vectors:
+  // 1.0 (identical) -> 100%, 0.5 (angle 60 deg) -> 50%, <= 0 -> 0%
+  const similarity = Math.max(0, Math.min(100, cosineSim * 100));
 
   return Math.round(similarity * 100) / 100;
 }
@@ -174,9 +176,7 @@ export function landmarksToDescriptor(
     return [];
   }
 
-  const descriptor: number[] = [];
-  
-  // Key landmark indices for facial features
+  // Key landmark indices for facial features (91 key points)
   const keyPoints = [
     // Face outline
     10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
@@ -193,22 +193,49 @@ export function landmarksToDescriptor(
     70, 63, 105, 66, 107, 336, 296, 334, 293, 300,
   ];
 
-  // Compute relative distances between pairs of key points
-  // This creates a compact, position-invariant descriptor
-  for (let i = 0; i < keyPoints.length; i++) {
-    for (let j = i + 1; j < keyPoints.length; j += 3) { // Skip some pairs to reduce dimensionality
-      const p1 = landmarks[keyPoints[i]];
-      const p2 = landmarks[keyPoints[j]];
-      if (p1 && p2) {
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const dz = (p2.z || 0) - (p1.z || 0);
-        descriptor.push(dx, dy, dz);
-      }
+  // Step 1: 3D Translation Normalization (center around nose-bridge landmark 168)
+  const anchor = landmarks[168] || landmarks[1] || { x: 0, y: 0, z: 0 };
+  const ax = anchor.x;
+  const ay = anchor.y;
+  const az = anchor.z || 0;
+
+  // Step 2: 3D Scale Normalization (inter-ocular distance between left outer eye 33 and right outer eye 263)
+  const leftEye = landmarks[33] || { x: 0, y: 0, z: 0 };
+  const rightEye = landmarks[263] || { x: 0, y: 0, z: 0 };
+  const eyeDx = rightEye.x - leftEye.x;
+  const eyeDy = rightEye.y - leftEye.y;
+  const eyeDz = (rightEye.z || 0) - (leftEye.z || 0);
+  let interOcularDist = Math.sqrt(eyeDx * eyeDx + eyeDy * eyeDy + eyeDz * eyeDz);
+  if (interOcularDist <= 1e-6) {
+    interOcularDist = 1.0;
+  }
+
+  // Pre-normalize keypoints (translation + scale)
+  const normPoints: Array<{ x: number; y: number; z: number }> = new Array(keyPoints.length);
+  for (let k = 0; k < keyPoints.length; k++) {
+    const pt = landmarks[keyPoints[k]];
+    if (pt) {
+      normPoints[k] = {
+        x: (pt.x - ax) / interOcularDist,
+        y: (pt.y - ay) / interOcularDist,
+        z: ((pt.z || 0) - az) / interOcularDist,
+      };
+    } else {
+      normPoints[k] = { x: 0, y: 0, z: 0 };
     }
   }
 
-  // Normalize the descriptor
+  // Step 3: Compute pairwise relative distance vectors between normalized keypoints
+  const descriptor: number[] = [];
+  for (let i = 0; i < normPoints.length; i++) {
+    for (let j = i + 1; j < normPoints.length; j += 3) {
+      const p1 = normPoints[i];
+      const p2 = normPoints[j];
+      descriptor.push(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+    }
+  }
+
+  // Step 4: L2 Normalize final vector
   let mag = 0;
   for (const v of descriptor) {
     mag += v * v;
@@ -216,7 +243,7 @@ export function landmarksToDescriptor(
   mag = Math.sqrt(mag);
   if (mag > 0) {
     for (let i = 0; i < descriptor.length; i++) {
-      descriptor[i] = descriptor[i] / mag;
+      descriptor[i] /= mag;
     }
   }
 

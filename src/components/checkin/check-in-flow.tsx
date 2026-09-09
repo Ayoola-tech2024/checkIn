@@ -24,7 +24,7 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { FaceCapture } from '@/components/checkin/face-capture';
 import { useGeoLocation } from '@/hooks/use-geo-location';
-import { haversineDistance } from '@/lib/geo';
+import { isWithinVenueOrLecturer } from '@/lib/geo';
 import { queueCheckIn } from '@/lib/offline';
 import type { SessionInfo, CheckInResult, AttendanceStatus } from '@/lib/types';
 import { toast } from 'sonner';
@@ -44,6 +44,8 @@ interface LocationResult {
   threshold: number;
   lat: number;
   lng: number;
+  accuracy?: number;
+  message?: string;
 }
 
 export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckInFlowProps) {
@@ -56,39 +58,34 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
   const geo = useGeoLocation();
 
   const validateLocation = useCallback(
-    (lat: number, lng: number) => {
-      // Use the SHARED Haversine implementation from lib/geo.ts — do NOT
-      // duplicate the math here. Fail CLOSED: if the session has no lecturer
-      // coords (which should never happen since start-session now hard-rejects
-      // missing GPS), mark the location check as failed rather than silently
-      // passing the student through.
-      const lecturerLat = session.lecturerLat;
-      const lecturerLng = session.lecturerLng;
+    (lat: number, lng: number, accuracy?: number) => {
+      const lecturerPos = {
+        lat: session.lecturerLat ?? null,
+        lng: session.lecturerLng ?? null,
+      };
 
-      let distance = 0;
-      let passed = false;
-
-      if (lecturerLat !== null && lecturerLat !== undefined && lecturerLng !== null && lecturerLng !== undefined) {
-        distance = haversineDistance(lat, lng, lecturerLat, lecturerLng);
-        passed = distance <= session.distanceThreshold;
-      } else {
-        // No reference point — fail closed. The server will also reject this
-        // check-in (see check-in/route.ts:96-101), so don't let the student
-        // advance to face-capture only to be rejected server-side.
-        passed = false;
-      }
-
-      const result: LocationResult = {
-        passed,
-        distance: Math.round(distance * 100) / 100,
-        threshold: session.distanceThreshold,
+      const geoCheck = isWithinVenueOrLecturer(
         lat,
         lng,
+        accuracy,
+        lecturerPos,
+        null,
+        session.distanceThreshold || 50
+      );
+
+      const result: LocationResult = {
+        passed: geoCheck.within,
+        distance: geoCheck.bestDistance,
+        threshold: session.distanceThreshold || 50,
+        lat,
+        lng,
+        accuracy,
+        message: geoCheck.message,
       };
 
       setLocationResult(result);
 
-      if (passed) {
+      if (geoCheck.within) {
         // Small delay for visual feedback before moving to biometric step
         setTimeout(() => setStep('biometric'), 1000);
       }
@@ -106,7 +103,7 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
   // Process GPS when obtained
   useEffect(() => {
     if (geo.position && !locationResult) {
-      validateLocation(geo.position.latitude, geo.position.longitude);
+      validateLocation(geo.position.latitude, geo.position.longitude, geo.position.accuracy);
     }
   }, [geo.position, locationResult, validateLocation]);
 
@@ -131,6 +128,7 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
             sessionId: session.id,
             studentLat: locationResult.lat,
             studentLng: locationResult.lng,
+            studentAccuracy: locationResult.accuracy,
             facialDescriptor: data.facialDescriptor,
             selfieData: data.selfieData,
           }),

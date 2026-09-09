@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
-import { haversineDistance, isWithinNigeria } from '@/lib/geo';
+import { isWithinVenueOrLecturer, isWithinNigeria } from '@/lib/geo';
 import { calculateSimilarity, getAttendanceStatusFromSimilarity, validateDescriptor } from '@/lib/face-utils';
 import { getAuthUser } from '@/lib/auth-context';
 
@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
       sessionId,
       studentLat,
       studentLng,
+      studentAccuracy,
       facialDescriptor,
       selfieData,
     } = await request.json();
@@ -156,29 +157,40 @@ if (!isWithinNigeria(parsedStudentLat, parsedStudentLng)) {
       }, { status: 409 });
     }
 
-    // ===== TIER 1: Location Validation =====
-    // SECURITY: No venue fallback. The lecturer MUST have provided real GPS
-    // when starting the session. If lecturer_lat is null, the session
-    // was not properly started — reject the check-in.
-    const lecturerLat = session.lecturer_lat as number | null;
-    const lecturerLng = session.lecturer_lng as number | null;
+    // ===== TIER 1: Dual-Anchor Geofence Location Validation =====
+    const lecturerPos = {
+      lat: session.lecturer_lat as number | null,
+      lng: session.lecturer_lng as number | null,
+    };
 
-    if (lecturerLat === null || lecturerLng === null) {
-      return NextResponse.json(
-        { success: false, error: 'Session location not available. The lecturer must start the session with GPS enabled.' },
-        { status: 400 }
-      );
+    let venuePos: { lat: number | null; lng: number | null } | null = null;
+    if (session.venue_id) {
+      const { data: venues } = await db.from('venues').select('latitude, longitude').eq('id', session.venue_id as string);
+      if (venues && venues.length > 0) {
+        const v = venues[0] as Record<string, unknown>;
+        venuePos = {
+          lat: typeof v.latitude === 'number' ? v.latitude : parseFloat(String(v.latitude ?? 'NaN')),
+          lng: typeof v.longitude === 'number' ? v.longitude : parseFloat(String(v.longitude ?? 'NaN')),
+        };
+      }
     }
 
-    const distance = haversineDistance(
+    const parsedAccuracy = typeof studentAccuracy === 'number'
+      ? studentAccuracy
+      : parseFloat(String(studentAccuracy ?? '0'));
+
+    const geoCheck = isWithinVenueOrLecturer(
       parsedStudentLat,
       parsedStudentLng,
-      lecturerLat,
-      lecturerLng
+      parsedAccuracy,
+      lecturerPos,
+      venuePos,
+      (session.distance_threshold as number) || 50
     );
-    const isWithinLocation = distance <= (session.distance_threshold as number);
 
-    if (!isWithinLocation) {
+    const distance = geoCheck.bestDistance;
+
+    if (!geoCheck.within) {
       // Location check failed - record as rejected_location
       const now = new Date().toISOString();
       const attendanceData = {
@@ -202,12 +214,14 @@ if (!isWithinNigeria(parsedStudentLat, parsedStudentLng)) {
 
       return NextResponse.json({
         success: false,
-        error: `You are ${Math.round(distance)}m away from the venue. Must be within ${session.distance_threshold}m.`,
+        error: geoCheck.message,
         data: {
           status: 'rejected_location',
-          distance: Math.round(distance * 100) / 100,
+          distance: geoCheck.bestDistance,
+          rawDistance: geoCheck.rawDistance,
+          accuracyDiscount: geoCheck.accuracyDiscount,
           threshold: session.distance_threshold,
-          message: `Too far from venue (${Math.round(distance)}m vs ${session.distance_threshold}m required)`,
+          message: geoCheck.message,
         },
       }, { status: 400 });
     }
