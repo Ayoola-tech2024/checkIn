@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Manually join departments for students
-    const studentDeptIds = (students || []).map((s: Record<string, unknown>) => s.department_id as string).filter(Boolean);
+    const studentDeptIds = ((students as Record<string, unknown>[]) || []).map((s) => s.department_id as string).filter(Boolean);
     const uniqueDeptIds = [...new Set(studentDeptIds)];
     let deptMap = new Map<string, Record<string, unknown>>();
     if (uniqueDeptIds.length > 0) {
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch school info for students
-    const schoolIds = [...new Set((students || []).map((s: Record<string, unknown>) => s.school_id as string).filter(Boolean))];
+    const schoolIds = [...new Set(((students as Record<string, unknown>[]) || []).map((s) => s.school_id as string).filter(Boolean))];
     const schoolMap = new Map<string, { name: string; code: string }>();
     if (schoolIds.length > 0) {
       const { data: schoolData } = await db.from('schools').select('id, name, code').in('id', schoolIds);
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const data = (students || []).map((s: Record<string, unknown>) => {
+    const data = ((students as Record<string, unknown>[]) || []).map((s) => {
       const department = deptMap.get(s.department_id as string) || null;
       const school = schoolMap.get(s.school_id as string);
       return {

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     let upcomingSessions = 0;
     if (departmentId) {
       const { data: sessionDepts } = await db.from('session_departments').select('session_id').eq('department_id', departmentId);
-      const deptSessionIds = (sessionDepts || []).map((sd: Record<string, unknown>) => sd.session_id as string);
+      const deptSessionIds = ((sessionDepts as Record<string, unknown>[]) || []).map((sd) => sd.session_id as string);
       if (deptSessionIds.length > 0) {
         const { data: scheduledSessions } = await db.from('sessions').select('id').in('id', deptSessionIds).eq('status', 'scheduled');
         upcomingSessions = scheduledSessions?.length || 0;

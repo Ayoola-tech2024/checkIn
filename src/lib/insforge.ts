@@ -7,11 +7,7 @@
 // handlers (server-side) import this module.
 
 const INSFORGE_URL = process.env.INSFORGE_URL || 'https://9djdhppd.us-east.insforge.app';
-const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY;
-
-if (!INSFORGE_API_KEY) {
-  throw new Error('INSFORGE_API_KEY environment variable is required (server-side).');
-}
+const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY || '';
 
 // PostgREST-compatible fetch wrapper for InsForge
 class InsForgeClient {
@@ -191,7 +187,7 @@ class InsForgeQueryBuilder {
   }
 
   // Make the query builder thenable (like a Promise)
-  then(resolve: (result: { data: unknown[] | null; error: Error | null; count?: number }) => void) {
+  then(resolve: (result: { data: Record<string, unknown>[] | null; error: Error | null; count?: number }) => void) {
     this.execute().then(resolve);
   }
 
@@ -203,8 +199,11 @@ class InsForgeQueryBuilder {
     });
   }
 
-  private async execute(): Promise<{ data: unknown[] | null; error: Error | null; count?: number }> {
+  private async execute(): Promise<{ data: Record<string, unknown>[] | null; error: Error | null; count?: number }> {
     try {
+      if (!this.apiKey) {
+        return { data: null, error: new Error('INSFORGE_API_KEY environment variable is required (server-side).') };
+      }
       const url = this.buildUrl();
       const res = await fetch(url, {
         method: 'GET',
@@ -287,7 +286,7 @@ class InsForgeMutationBuilder {
     return headers;
   }
 
-  then(resolve: (result: { data: unknown[] | null; error: Error | null }) => void) {
+  then(resolve: (result: { data: Record<string, unknown>[] | null; error: Error | null }) => void) {
     this.execute().then(resolve);
   }
 
@@ -299,8 +298,11 @@ class InsForgeMutationBuilder {
     });
   }
 
-  private async execute(): Promise<{ data: unknown[] | null; error: Error | null }> {
+  private async execute(): Promise<{ data: Record<string, unknown>[] | null; error: Error | null }> {
     try {
+      if (!this.apiKey) {
+        return { data: null, error: new Error('INSFORGE_API_KEY environment variable is required (server-side).') };
+      }
       let url = `${this.baseUrl}/api/database/records/${this.table}`;
       const isUpsert = this.method === 'UPSERT';
 

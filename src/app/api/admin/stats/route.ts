@@ -53,14 +53,14 @@ export async function GET(request: NextRequest) {
     const activationRate = totalStudents > 0 ? Math.round((activatedStudents / totalStudents) * 100) : 0;
 
     // Process department student counts - manual join
-    const deptIds = (departmentCountsResult.data || []).map((d: Record<string, unknown>) => d.id as string);
+    const deptIds = ((departmentCountsResult.data as Record<string, unknown>[]) || []).map((d) => d.id as string);
     const studentsByDeptResult = deptIds.length > 0
       ? await db.from('students').select('id, department_id, activated').in('department_id', deptIds)
       : { data: [] };
 
     const studentsByDept = (studentsByDeptResult.data || []) as Record<string, unknown>[];
 
-    const departmentStudentCounts = (departmentCountsResult.data || []).map((dept: Record<string, unknown>) => {
+    const departmentStudentCounts = ((departmentCountsResult.data as Record<string, unknown>[]) || []).map((dept) => {
       const deptStudents = studentsByDept.filter((s: Record<string, unknown>) => s.department_id === dept.id);
       return {
         id: dept.id as string,
@@ -85,13 +85,13 @@ export async function GET(request: NextRequest) {
       ]);
 
       const courseLookup = Object.fromEntries(
-        ((coursesMap.data || []) as Record<string, unknown>[]).map((c: Record<string, unknown>) => [c.id, c])
+        ((coursesMap.data as Record<string, unknown>[]) || []).map((c) => [c.id, c])
       );
       const venueLookup = Object.fromEntries(
-        ((venuesMap.data || []) as Record<string, unknown>[]).map((v: Record<string, unknown>) => [v.id, v])
+        ((venuesMap.data as Record<string, unknown>[]) || []).map((v) => [v.id, v])
       );
 
-      recentSessions = recentSessionsRaw.map((session: Record<string, unknown>) => {
+      recentSessions = recentSessionsRaw.map((session) => {
         const course = (courseLookup[session.course_id as string] || {}) as Record<string, unknown>;
         const venue = (venueLookup[session.venue_id as string] || {}) as Record<string, unknown>;
         return {

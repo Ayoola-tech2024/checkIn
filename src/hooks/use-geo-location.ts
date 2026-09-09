@@ -128,7 +128,7 @@ export function useGeoLocation(): UseGeoLocationReturn {
               if (mountedRef.current) {
                 setLoading(false);
                 setError(
-                  `Using approximate location (accuracy ${Math.round(pos.accuracy)}m). For best results, enable high-accuracy GPS.`
+                  `Using approximate location (accuracy ${Math.round(pos.accuracy ?? 0)}m). For best results, enable high-accuracy GPS.`
                 );
               }
               resolve(pos);

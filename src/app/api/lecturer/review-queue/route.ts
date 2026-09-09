@@ -84,13 +84,13 @@ export async function GET(request: NextRequest) {
     }
 
     const studentMap = new Map(
-      (studentsResult.data || []).map((s: Record<string, unknown>) => [s.id, { ...s, departments: studentDeptMap.get(s.department_id as string) || null }])
+      ((studentsResult.data as Record<string, unknown>[]) || []).map((s) => [s.id, { ...s, departments: studentDeptMap.get(s.department_id as string) || null }])
     );
     const sessionMap = new Map(
-      (sessionDetailsResult.data || []).map((s: Record<string, unknown>) => [s.id, { ...s, courses: courseMap.get(s.course_id as string) || null, venues: venueMap.get(s.venue_id as string) || null }])
+      ((sessionDetailsResult.data as Record<string, unknown>[]) || []).map((s) => [s.id, { ...s, courses: courseMap.get(s.course_id as string) || null, venues: venueMap.get(s.venue_id as string) || null }])
     );
 
-    const data = pendingReviews.map((a: Record<string, unknown>) => {
+    const data = (pendingReviews as Record<string, unknown>[]).map((a) => {
       const student = studentMap.get(a.student_id as string) as Record<string, unknown> | undefined;
       const studentDept = student?.departments as Record<string, unknown> | null;
       const session = sessionMap.get(a.session_id as string) as Record<string, unknown> | undefined;

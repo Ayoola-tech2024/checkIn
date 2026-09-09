@@ -69,8 +69,8 @@ export async function POST(request: NextRequest) {
       .select('id')
       .eq('email', email);
 
-    const emailExists = (emailStudents || []).some(
-      (s: Record<string, unknown>) => s.id !== studentId
+    const emailExists = ((emailStudents as Record<string, unknown>[]) || []).some(
+      (s) => s.id !== studentId
     );
 
     if (emailExists) {

@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     let totalCheckIns = 0;
 
     if (sessions && sessions.length > 0) {
-      const sessionIds = sessions.map((s: Record<string, unknown>) => s.id as string);
+      const sessionIds = ((sessions as Record<string, unknown>[]) || []).map((s) => s.id as string);
       const { data: attendances } = await db
         .from('attendances')
         .select('status')

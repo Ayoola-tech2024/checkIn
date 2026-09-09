@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Map snake_case to camelCase for frontend compatibility
-    const data = (semesters || []).map((s: Record<string, unknown>) => ({
+    const data = ((semesters as Record<string, unknown>[]) || []).map((s) => ({
       id: s.id,
       name: s.name,
       startDate: s.start_date,

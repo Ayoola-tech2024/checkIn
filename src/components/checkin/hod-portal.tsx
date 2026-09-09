@@ -999,9 +999,7 @@ export function HodPortal() {
       </footer>
 
       {/* Profile Panel */}
-      {showProfile && (
-        <ProfilePanel onClose={() => setShowProfile(false)} />
-      )}
+      <ProfilePanel open={showProfile} onOpenChange={setShowProfile} />
 
       {/* Create Lecturer Dialog */}
       <Dialog open={lecturerDialogOpen} onOpenChange={setLecturerDialogOpen}>

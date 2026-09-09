@@ -9,18 +9,19 @@ import { SignJWT, jwtVerify } from 'jose';
 const DEV_FALLBACK_SECRET = 'checkin-dev-secret-change-in-production-32chars!';
 const rawSessionSecret = process.env.SESSION_SECRET;
 if (!rawSessionSecret || rawSessionSecret.length < 32 || rawSessionSecret === DEV_FALLBACK_SECRET) {
-  // In production, this must abort startup. In dev, we still allow the
-  // fallback but warn loudly so it is never deployed accidentally.
-  if (process.env.NODE_ENV === 'production') {
+  // In production runtime (not build phase), this must abort startup. In dev/build, we fallback.
+  if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
     throw new Error(
       'SESSION_SECRET environment variable is required in production, must be at least 32 characters, ' +
       'and must not equal the publicly-known dev fallback. Aborting startup.'
     );
   }
-  console.warn(
-    '[SECURITY WARNING] SESSION_SECRET is missing or weak — using publicly-known dev fallback. ' +
-    'This is FORBIDDEN in production. Set a strong SESSION_SECRET env var (>=32 chars).'
-  );
+  if (process.env.NEXT_PHASE !== 'phase-production-build') {
+    console.warn(
+      '[SECURITY WARNING] SESSION_SECRET is missing or weak — using publicly-known dev fallback. ' +
+      'This is FORBIDDEN in production. Set a strong SESSION_SECRET env var (>=32 chars).'
+    );
+  }
 }
 const SESSION_SECRET = new TextEncoder().encode(
   rawSessionSecret && rawSessionSecret.length >= 32 && rawSessionSecret !== DEV_FALLBACK_SECRET
