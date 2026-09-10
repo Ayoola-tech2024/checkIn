@@ -747,9 +747,20 @@ function ActivePortal() {
                     value={stats.attendanceRate}
                     className="h-1.5 mt-3 bg-emerald-100 dark:bg-emerald-950/50"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1.5">
-                    {stats.totalPresent} of {stats.totalPresent + stats.totalAbsent + stats.totalRejected} sessions attended
-                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-[11px] text-muted-foreground">
+                      {stats.totalPresent} of {stats.totalPresent + stats.totalAbsent + stats.totalRejected} attended
+                    </p>
+                    {stats.attendanceRate >= 75 ? (
+                      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px] px-1.5 py-0">
+                        Exam Eligible (≥75%)
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30 text-[10px] px-1.5 py-0">
+                        At Risk (&lt;75%)
+                      </Badge>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
 

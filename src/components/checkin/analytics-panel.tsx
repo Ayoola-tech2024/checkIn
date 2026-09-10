@@ -186,59 +186,100 @@ export function AnalyticsPanel({ sessionId, onBack }: AnalyticsPanelProps) {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pie Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Attendance Distribution</CardTitle>
+        <Card className="border-0 shadow-sm bg-card/60 backdrop-blur-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <span className="size-2 rounded-full bg-emerald-500" />
+              Attendance Distribution
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {pieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={3}
-                    dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={65}
+                      outerRadius={105}
+                      paddingAngle={4}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0];
+                          return (
+                            <div className="rounded-xl bg-slate-900/90 text-white p-3 text-xs shadow-xl border border-slate-700/80 backdrop-blur-md">
+                              <p className="font-semibold">{data.name}</p>
+                              <p className="text-slate-300 mt-0.5">{data.value} Student(s)</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
-              <p className="text-center text-muted-foreground py-10">No data to display</p>
+              <p className="text-center text-muted-foreground py-12 text-sm">No distribution data to display</p>
             )}
           </CardContent>
         </Card>
 
         {/* Bar Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Department Breakdown</CardTitle>
+        <Card className="border-0 shadow-sm bg-card/60 backdrop-blur-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <span className="size-2 rounded-full bg-blue-500" />
+              Department Breakdown
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {barData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={barData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="department" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="present" stackId="a" fill="#10b981" name="Present" />
-                  <Bar dataKey="pending" stackId="a" fill="#f59e0b" name="Pending" />
-                  <Bar dataKey="rejected" stackId="a" fill="#dc2626" name="Rejected" />
-                  <Bar dataKey="absent" stackId="a" fill="#ef4444" name="Absent" />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={barData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" vertical={false} />
+                    <XAxis dataKey="department" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="rounded-xl bg-slate-900/90 text-white p-3 text-xs shadow-xl border border-slate-700/80 backdrop-blur-md space-y-1">
+                              <p className="font-semibold text-slate-200">{label}</p>
+                              {payload.map((entry, idx) => (
+                                <p key={idx} style={{ color: entry.color }} className="flex justify-between gap-4">
+                                  <span>{entry.name}:</span>
+                                  <span className="font-bold">{entry.value}</span>
+                                </p>
+                              ))}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                    <Bar dataKey="present" stackId="a" fill="#10b981" name="Present" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="pending" stackId="a" fill="#f59e0b" name="Pending" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="rejected" stackId="a" fill="#dc2626" name="Rejected" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="absent" stackId="a" fill="#ef4444" name="Absent" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
-              <p className="text-center text-muted-foreground py-10">No data to display</p>
+              <p className="text-center text-muted-foreground py-12 text-sm">No department data to display</p>
             )}
           </CardContent>
         </Card>
