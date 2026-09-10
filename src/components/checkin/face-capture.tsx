@@ -210,22 +210,72 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
       setLastLandmarks(landmarks);
       setStatus('face-found');
 
-      // Draw face mesh overlay (subtle)
-      ctx.strokeStyle = 'rgba(0, 200, 100, 0.3)';
-      ctx.lineWidth = 1;
+      // Draw High-Tech 3D FaceMesh Wireframe Grid Overlay
+      const drawPolyline = (indices: number[], color = 'rgba(16, 185, 129, 0.75)', width = 1.5, close = false) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        let started = false;
+        for (const idx of indices) {
+          if (landmarks[idx]) {
+            const x = landmarks[idx].x * canvas.width;
+            const y = landmarks[idx].y * canvas.height;
+            if (!started) {
+              ctx.moveTo(x, y);
+              started = true;
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+        }
+        if (close) ctx.closePath();
+        ctx.stroke();
+      };
 
-      const faceOval = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109, 10];
-      ctx.beginPath();
-      for (let i = 0; i < faceOval.length; i++) {
-        const idx = faceOval[i];
+      // 1. Jawline & Face Oval
+      drawPolyline([10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109], 'rgba(16, 185, 129, 0.9)', 2, true);
+
+      // 2. Eyes
+      drawPolyline([33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158], 'rgba(56, 189, 248, 0.9)', 1.5, true);
+      drawPolyline([362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387], 'rgba(56, 189, 248, 0.9)', 1.5, true);
+
+      // 3. Eyebrows
+      drawPolyline([70, 63, 105, 66, 107, 55, 65, 52, 53, 46], 'rgba(16, 185, 129, 0.8)', 1.5, false);
+      drawPolyline([336, 296, 334, 293, 300, 285, 295, 282, 283, 276], 'rgba(16, 185, 129, 0.8)', 1.5, false);
+
+      // 4. Nose Ridge & Wings
+      drawPolyline([168, 6, 197, 195, 5, 4, 1, 19, 94, 2], 'rgba(16, 185, 129, 0.85)', 1.5, false);
+      drawPolyline([98, 97, 2, 326, 327, 278, 279, 360, 2, 131, 48, 115, 98], 'rgba(16, 185, 129, 0.6)', 1, true);
+
+      // 5. Mouth & Lips
+      drawPolyline([61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78], 'rgba(16, 185, 129, 0.85)', 1.5, true);
+
+      // 6. Facial Grid Cross-Mesh Lines (Tessellation Grid)
+      drawPolyline([10, 151, 9, 8, 168], 'rgba(16, 185, 129, 0.4)', 1, false);
+      drawPolyline([234, 127, 162, 21, 54, 103, 67, 109, 10, 168, 197, 5, 4, 1, 2, 98, 234], 'rgba(16, 185, 129, 0.35)', 1, true);
+      drawPolyline([454, 356, 389, 251, 284, 332, 297, 338, 10, 168, 197, 5, 4, 1, 2, 327, 454], 'rgba(16, 185, 129, 0.35)', 1, true);
+      drawPolyline([152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234], 'rgba(16, 185, 129, 0.35)', 1, false);
+      drawPolyline([152, 377, 400, 378, 365, 397, 288, 361, 323, 454], 'rgba(16, 185, 129, 0.35)', 1, false);
+
+      // 7. Render Glowing Landmark Dots on Keypoints
+      const keyMeshPoints = [
+        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152,
+        33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158,
+        362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387,
+        1, 2, 98, 327, 168, 6, 197, 195, 5,
+        61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308
+      ];
+
+      ctx.fillStyle = '#10b981';
+      for (const idx of keyMeshPoints) {
         if (landmarks[idx]) {
           const x = landmarks[idx].x * canvas.width;
           const y = landmarks[idx].y * canvas.height;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+          ctx.beginPath();
+          ctx.arc(x, y, 2, 0, 2 * Math.PI);
+          ctx.fill();
         }
       }
-      ctx.stroke();
 
       ctx.fillStyle = 'rgba(0, 200, 100, 0.8)';
       ctx.font = '24px sans-serif';

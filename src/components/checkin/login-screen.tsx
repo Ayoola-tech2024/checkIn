@@ -321,22 +321,13 @@ export function LoginScreen() {
                   />
                 </div>
 
-                {selectedRole === 'student' && (
-                  <div className="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/20 p-3">
-                    <p className="text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
-                      <GraduationCap className="size-4 mt-0.5 shrink-0" />
-                      Use your Matric Number with your default password (your SURNAME in block caps, e.g. &quot;DAMISILE&quot;) to log in and activate your account.
-                    </p>
-                  </div>
-                )}
-
                 {(selectedRole === 'lecturer' || selectedRole === 'hod') && (
                   <div className="rounded-lg border border-sky-200 dark:border-sky-800/60 bg-sky-50 dark:bg-sky-950/20 p-3">
                     <p className="text-sm text-sky-800 dark:text-sky-200 flex items-start gap-2">
                       <BookOpen className="size-4 mt-0.5 shrink-0" />
                       {selectedRole === 'hod'
-                        ? 'Use your HOD email with your default password (your SURNAME in block caps) to log in.'
-                        : 'Use your email with your default password (your SURNAME in block caps) to log in.'}
+                        ? 'Use your HOD email to log in.'
+                        : 'Use your email to log in.'}
                     </p>
                   </div>
                 )}

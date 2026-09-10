@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/insforge';
 import { hashPassword } from '@/lib/auth';
 import { getAuthUser } from '@/lib/auth-context';
-import { validateDescriptor } from '@/lib/face-utils';
+import { validateDescriptor, calculateSimilarity } from '@/lib/face-utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -84,13 +84,13 @@ export async function POST(request: NextRequest) {
 
     // Process facial data - face capture is now required for activation
     let facialDataString: string;
+    let candidateDescriptor: number[];
+
     if (facialData) {
       if (typeof facialData === 'string') {
         try {
           const parsed = JSON.parse(facialData);
-          // SECURITY: validate descriptor shape on activation. Prevents a
-          // malicious/buggy client from storing `{ descriptor: [] }` which
-          // would brick that student's check-in forever.
+          // SECURITY: validate descriptor shape on activation.
           const descriptorToValidate = parsed?.descriptor ?? parsed;
           const descriptorError = validateDescriptor(descriptorToValidate);
           if (descriptorError) {
@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
             );
           }
           facialDataString = facialData;
+          candidateDescriptor = descriptorToValidate as number[];
         } catch {
           return NextResponse.json(
             { success: false, error: 'Invalid facial data format. Please recapture your face.' },
@@ -117,6 +118,7 @@ export async function POST(request: NextRequest) {
           );
         }
         facialDataString = JSON.stringify(facialData);
+        candidateDescriptor = descriptorToValidate as number[];
       } else {
         return NextResponse.json(
           { success: false, error: 'Facial data is required for account activation.' },
@@ -128,6 +130,44 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Facial verification is required for account activation. Please capture your face.' },
         { status: 400 }
       );
+    }
+
+    // CRITICAL SECURITY: Global Biometric Deduplication Guard
+    // Fetch all existing activated students to ensure this face vector
+    // is NOT already registered to another student account in the school.
+    const { data: allActivatedStudents } = await db
+      .from('students')
+      .select('id, name, matric_number, facial_data')
+      .is('activated', true);
+
+    if (allActivatedStudents && allActivatedStudents.length > 0) {
+      for (const otherStudent of allActivatedStudents) {
+        const otherId = otherStudent.id as string;
+        if (otherId === studentId) continue; // Skip current student if re-activating
+
+        const otherFacialDataStr = otherStudent.facial_data as string | null;
+        if (!otherFacialDataStr) continue;
+
+        try {
+          const parsedOther = JSON.parse(otherFacialDataStr);
+          const otherDescriptor = (parsedOther?.descriptor ?? parsedOther) as number[];
+          if (Array.isArray(otherDescriptor) && otherDescriptor.length > 0) {
+            const similarity = calculateSimilarity(candidateDescriptor, otherDescriptor);
+            if (similarity >= 50.0) {
+              const otherMatric = (otherStudent.matric_number as string) || 'another account';
+              return NextResponse.json(
+                {
+                  success: false,
+                  error: `Biometric Registration Rejected: This face is already registered to student account (${otherMatric}) with ${similarity}% match. Multiple accounts per face are strictly prohibited.`,
+                },
+                { status: 409 }
+              );
+            }
+          }
+        } catch {
+          // Ignore malformed json entries in existing records
+        }
+      }
     }
 
     // Update the student record
