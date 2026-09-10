@@ -26,8 +26,9 @@ export const metadata: Metadata = {
     title: "checkIn",
   },
   icons: {
-    icon: "/logo.svg",
-    apple: "/icon-192x192.png",
+    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
+    shortcut: "/logo.svg",
+    apple: "/logo.svg",
   },
 };
 
