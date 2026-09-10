@@ -28,6 +28,7 @@ import {
   BookOpen,
   ClipboardList,
   TrendingUp,
+  Zap,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -955,8 +956,101 @@ export function LecturerPortal() {
     totalCheckIns: number;
   } | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [quickStarting, setQuickStarting] = useState<string | null>(null);
 
   const lecturerId = user?.id || '';
+
+  // 1-Tap Quick Start Session for Lecturers
+  const handleQuickStart = async (course: CourseInfo) => {
+    setQuickStarting(course.id);
+    try {
+      let pos: { latitude: number; longitude: number };
+      try {
+        pos = await geo.getCurrentPosition();
+      } catch {
+        toast.error('GPS location permission is required to start a session. Enable location and retry.');
+        setQuickStarting(null);
+        return;
+      }
+
+      const [venuesRes, deptsRes] = await Promise.all([
+        fetch('/api/lecturer/venues').then((r) => r.json()),
+        fetch('/api/lecturer/departments').then((r) => r.json()),
+      ]);
+
+      const venues = venuesRes.success ? (venuesRes.data as VenueInfo[]) : [];
+      const depts = deptsRes.success ? (deptsRes.data as DepartmentInfo[]) : [];
+
+      const venueId = venues[0]?.id;
+      if (!venueId) {
+        toast.error('No venues available. Please ask admin to add a venue.');
+        setQuickStarting(null);
+        return;
+      }
+
+      const deptIds = course.departments?.length
+        ? course.departments.map((d) => d.id)
+        : depts.map((d) => d.id);
+
+      if (deptIds.length === 0) {
+        toast.error('No departments assigned for this course.');
+        setQuickStarting(null);
+        return;
+      }
+
+      const now = new Date();
+      const title = `${course.code} Quick Session (${format(now, 'MMM d, h:mm a')})`;
+      const level = course.level ?? 100;
+
+      const createRes = await fetch('/api/lecturer/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          courseId: course.id,
+          venueId,
+          lecturerId,
+          level,
+          departmentIds: deptIds,
+          distanceThreshold: DEFAULT_DISTANCE_THRESHOLD,
+          durationMinutes: DEFAULT_SESSION_DURATION,
+          scheduledAt: now.toISOString(),
+        }),
+      });
+
+      const createJson = await createRes.json();
+      if (!createJson.success || !createJson.data?.id) {
+        toast.error(createJson.error || 'Failed to create instant session');
+        setQuickStarting(null);
+        return;
+      }
+
+      const newSessionId = createJson.data.id;
+
+      const startRes = await fetch('/api/lecturer/start-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: newSessionId,
+          lecturerLat: pos.latitude,
+          lecturerLng: pos.longitude,
+        }),
+      });
+
+      const startJson = await startRes.json();
+      if (startJson.success) {
+        toast.success(`⚡ Quick Session Active for ${course.code}! Students can now check in.`);
+        fetchSessions();
+        fetchStats();
+      } else {
+        toast.error(startJson.error || 'Failed to activate session');
+      }
+    } catch {
+      toast.error('Network error launching quick session');
+    } finally {
+      setQuickStarting(null);
+    }
+  };
 
   // Fetch lecturer stats
   const fetchStats = useCallback(async () => {
@@ -1268,14 +1362,52 @@ export function LecturerPortal() {
           {/* Sessions Tab */}
           <TabsContent value="sessions" className="mt-0">
             <div className="p-4 md:p-6">
+              {/* 1-Tap Quick Launch Bar */}
+              {courses.length > 0 && (
+                <Card className="card-elevated mb-6 border-amber-200/80 dark:border-amber-800/50 bg-gradient-to-r from-amber-50/40 via-blue-50/20 to-emerald-50/40 dark:from-amber-950/20 dark:via-blue-950/10 dark:to-emerald-950/20">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-amber-500 fill-amber-500 animate-pulse" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-foreground">1-Tap Instant Session Launch</span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground hidden sm:inline">Auto-detects GPS & Starts Check-in Instantly</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                      {courses.map((c) => (
+                        <Button
+                          key={c.id}
+                          onClick={() => handleQuickStart(c)}
+                          disabled={quickStarting === c.id}
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white justify-between shadow-sm"
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            {quickStarting === c.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                            ) : (
+                              <Zap className="h-4 w-4 stroke-white shrink-0" />
+                            )}
+                            <span className="truncate font-semibold text-xs">{c.code} - {c.name}</span>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] border-white/40 text-white bg-white/10 shrink-0">
+                            {c.level}L
+                          </Badge>
+                        </Button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold">My Sessions</h2>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={() => { fetchSessions(); fetchCourses(); }}>
                     <RefreshCw className="h-4 w-4" />
                   </Button>
-                  <Button onClick={() => setCreateDialogOpen(true)} disabled={courses.length === 0}>
-                    <Plus className="mr-2 h-4 w-4" /> Create Session
+                  <Button onClick={() => setCreateDialogOpen(true)} disabled={courses.length === 0} variant="outline">
+                    <Plus className="mr-2 h-4 w-4" /> Advanced Schedule
                   </Button>
                 </div>
               </div>
