@@ -422,28 +422,30 @@ export function AdminDashboard() {
                         <Cell fill="#f59e0b" />
                       </Pie>
                       <Tooltip
-                        formatter={(value: number, name: string) => [`${value} students`, name]}
-                        contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '13px' }}
-                      />
-                      <Legend
-                        verticalAlign="bottom"
-                        iconType="circle"
-                        iconSize={8}
-                        formatter={(value: string) => (
-                          <span className="text-sm text-muted-foreground">{value}</span>
-                        )}
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0];
+                            return (
+                              <div className="rounded-xl bg-slate-900/90 text-white p-2.5 text-xs shadow-xl border border-slate-700/80 backdrop-blur-md">
+                                <p className="font-semibold">{data.name}</p>
+                                <p className="text-slate-300 mt-0.5">{data.value} Student(s)</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="flex items-center justify-center gap-6 mt-2">
+                <div className="flex items-center justify-center gap-6 mt-2 pt-2 border-t border-border/40">
                   <div className="flex items-center gap-2">
-                    <div className="size-3 rounded-full bg-emerald-500" />
-                    <span className="text-sm text-muted-foreground">Activated ({stats.activatedStudents})</span>
+                    <div className="size-2.5 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-medium">Activated ({stats.activatedStudents})</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="size-3 rounded-full bg-amber-500" />
-                    <span className="text-sm text-muted-foreground">Not Activated ({stats.totalStudents - stats.activatedStudents})</span>
+                    <div className="size-2.5 rounded-full bg-amber-500" />
+                    <span className="text-xs font-medium">Not Activated ({stats.totalStudents - stats.activatedStudents})</span>
                   </div>
                 </div>
               </CardContent>

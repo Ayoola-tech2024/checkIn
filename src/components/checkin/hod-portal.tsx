@@ -553,43 +553,65 @@ export function HodPortal() {
             {/* Charts Row */}
             <div className="grid md:grid-cols-2 gap-6">
               {/* Students by Level */}
-              <Card>
+              <Card className="card-elevated">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Students by Level</CardTitle>
+                  <CardTitle className="text-sm font-semibold flex items-center justify-between">
+                    <span>Students by Academic Level</span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {stats?.studentCount || 0} Total
+                    </Badge>
+                  </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pt-2">
                   {levelChartData.length > 0 ? (
-                    <div className="h-48">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={levelChartData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={40}
-                            outerRadius={70}
-                            paddingAngle={3}
-                            dataKey="value"
-                          >
-                            {levelChartData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="flex flex-wrap gap-2 mt-2 justify-center">
+                    <div className="space-y-3">
+                      <div className="h-[180px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={levelChartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={45}
+                              outerRadius={75}
+                              paddingAngle={3}
+                              dataKey="value"
+                              stroke="none"
+                            >
+                              {levelChartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const data = payload[0];
+                                  return (
+                                    <div className="rounded-xl bg-slate-900/90 text-white p-2.5 text-xs shadow-xl border border-slate-700/80 backdrop-blur-md">
+                                      <p className="font-semibold">{data.name}</p>
+                                      <p className="text-slate-300 mt-0.5">{data.value} Student(s)</p>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex flex-wrap gap-2 justify-center pt-1 border-t border-border/50">
                         {levelChartData.map((d) => (
-                          <div key={d.name} className="flex items-center gap-1.5 text-xs">
-                            <div className="size-2.5 rounded-full" style={{ backgroundColor: d.color }} />
-                            <span>{d.name}: {d.value}</span>
+                          <div key={d.name} className="flex items-center gap-1.5 text-xs bg-muted/40 px-2 py-1 rounded-md">
+                            <div className="size-2 rounded-full" style={{ backgroundColor: d.color }} />
+                            <span className="font-medium">{d.name}:</span>
+                            <span className="font-bold text-foreground">{d.value}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : (
                     <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
-                      No students yet
+                      No student level data yet
                     </div>
                   )}
                 </CardContent>

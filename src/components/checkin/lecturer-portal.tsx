@@ -1105,138 +1105,122 @@ export function LecturerPortal() {
       {/* Stats Overview Section */}
       {!loadingStats && lecturerStats && (
         <div className="px-4 pt-4 md:px-6 md:pt-6">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {/* Total Sessions */}
-            <Card className="card-elevated">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/30">
-                    <ClipboardList className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{lecturerStats.totalSessions}</p>
-                    <p className="text-xs text-muted-foreground">Total Sessions</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Active Sessions */}
-            <Card className="card-elevated">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
-                    <Activity className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{lecturerStats.activeSessions}</p>
-                    <p className="text-xs text-muted-foreground">Active Sessions</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Courses */}
-            <Card className="card-elevated">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/30">
-                    <BookOpen className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{lecturerStats.totalCourses}</p>
-                    <p className="text-xs text-muted-foreground">Courses</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Total Check-ins */}
-            <Card className="card-elevated">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/30">
-                    <Users className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{lecturerStats.totalCheckIns}</p>
-                    <p className="text-xs text-muted-foreground">Total Check-ins</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Attendance Rate */}
-            <Card className="card-elevated col-span-2 md:col-span-1">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
-                    <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      {lecturerStats.totalCheckIns > 0
-                        ? `${Math.round((lecturerStats.totalPresent / lecturerStats.totalCheckIns) * 100)}%`
-                        : '0%'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Attendance Rate</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Session Status Distribution */}
-          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="flex items-center gap-2">
-              {(() => {
-                const chartData = [
-                  { name: 'Scheduled', value: lecturerStats.scheduledSessions, color: '#f59e0b' },
-                  { name: 'Active', value: lecturerStats.activeSessions, color: '#10b981' },
-                  { name: 'Completed', value: lecturerStats.completedSessions, color: '#6b7280' },
-                ].filter((d) => d.value > 0);
-
-                if (chartData.length === 0) {
-                  return (
-                    <div className="text-sm text-muted-foreground">
-                      No sessions yet
-                    </div>
-                  );
-                }
-
-                return (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Main Stats Grid */}
+            <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Total Sessions */}
+              <Card className="card-elevated">
+                <CardContent className="p-4">
                   <div className="flex items-center gap-3">
-                    <PieChart width={48} height={48}>
-                      <Pie
-                        data={chartData}
-                        cx={24}
-                        cy={24}
-                        innerRadius={12}
-                        outerRadius={22}
-                        paddingAngle={2}
-                        dataKey="value"
-                        stroke="none"
-                      >
-                        {chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                    </PieChart>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30">
-                        Scheduled: {lecturerStats.scheduledSessions}
-                      </Badge>
-                      <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30">
-                        Active: {lecturerStats.activeSessions}
-                      </Badge>
-                      <Badge variant="outline" className="border-gray-300 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-950/30">
-                        Completed: {lecturerStats.completedSessions}
-                      </Badge>
+                    <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/30 text-sky-600 dark:text-sky-400">
+                      <ClipboardList className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold tracking-tight">{lecturerStats.totalSessions}</p>
+                      <p className="text-xs font-medium text-muted-foreground">Total Sessions</p>
                     </div>
                   </div>
-                );
-              })()}
+                </CardContent>
+              </Card>
+
+              {/* Active Sessions */}
+              <Card className="card-elevated border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/10 dark:bg-emerald-950/10">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+                      <Activity className="h-5 w-5 animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">{lecturerStats.activeSessions}</p>
+                      <p className="text-xs font-medium text-muted-foreground">Active Sessions</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Courses */}
+              <Card className="card-elevated">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400">
+                      <BookOpen className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold tracking-tight">{lecturerStats.totalCourses}</p>
+                      <p className="text-xs font-medium text-muted-foreground">Courses</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Attendance Rate */}
+              <Card className="card-elevated">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400">
+                      <TrendingUp className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+                        {lecturerStats.totalCheckIns > 0
+                          ? `${Math.round((lecturerStats.totalPresent / lecturerStats.totalCheckIns) * 100)}%`
+                          : '0%'}
+                      </p>
+                      <p className="text-xs font-medium text-muted-foreground">Overall Rate</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
+
+            {/* Session Status Overview Bar Card */}
+            <Card className="card-elevated flex flex-col justify-center">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Session Status Breakdown</span>
+                  <Badge variant="outline" className="text-[10px] font-mono">
+                    {lecturerStats.totalSessions} Total
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
+                    <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{lecturerStats.scheduledSessions}</p>
+                    <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">Scheduled</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-800/30">
+                    <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{lecturerStats.activeSessions}</p>
+                    <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Active</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                    <p className="text-lg font-bold text-slate-600 dark:text-slate-400">{lecturerStats.completedSessions}</p>
+                    <p className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Completed</p>
+                  </div>
+                </div>
+
+                {lecturerStats.totalSessions > 0 && (
+                  <div className="space-y-1 pt-1">
+                    <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
+                      <div
+                        style={{ width: `${(lecturerStats.scheduledSessions / lecturerStats.totalSessions) * 100}%` }}
+                        className="bg-amber-500 transition-all duration-500"
+                        title={`Scheduled: ${lecturerStats.scheduledSessions}`}
+                      />
+                      <div
+                        style={{ width: `${(lecturerStats.activeSessions / lecturerStats.totalSessions) * 100}%` }}
+                        className="bg-emerald-500 transition-all duration-500 animate-pulse"
+                        title={`Active: ${lecturerStats.activeSessions}`}
+                      />
+                      <div
+                        style={{ width: `${(lecturerStats.completedSessions / lecturerStats.totalSessions) * 100}%` }}
+                        className="bg-slate-400 transition-all duration-500"
+                        title={`Completed: ${lecturerStats.completedSessions}`}
+                      />
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}
