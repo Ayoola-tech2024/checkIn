@@ -443,27 +443,31 @@ export function HodPortal() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-gradient-to-br from-violet-500 to-violet-600 shadow-sm">
-              <ShieldCheck className="size-5 text-white" />
+            <div className="flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-600 shadow-md shadow-violet-500/20 text-white">
+              <ShieldCheck className="size-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold">checkIn <span className="text-violet-600 dark:text-violet-400">HOD</span></h1>
-              <p className="text-xs text-muted-foreground">{department?.name || 'Department'}</p>
+              <h1 className="text-base font-bold tracking-tight flex items-center gap-1.5">
+                checkIn <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">HOD</span>
+              </h1>
+              <p className="text-xs text-muted-foreground font-mono">{department?.name || 'Department'}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300">
+            <Badge variant="outline" className="text-[10px] font-mono border-violet-500/30 text-violet-600 dark:text-violet-400 bg-violet-500/10 hidden sm:inline-flex">
               {SCHOOL}
             </Badge>
-            <Button variant="ghost" size="sm" onClick={() => setShowProfile(true)}>
-              <Users className="size-4 mr-1" />
-              {user?.name}
+            <Button variant="ghost" size="sm" onClick={() => setShowProfile(true)} className="gap-1.5 text-xs font-medium">
+              <Users className="size-4 text-violet-500" />
+              <span className="hidden sm:inline">{user?.name}</span>
             </Button>
-            <ThemeToggle className="h-9 w-9" />
-            <Button variant="ghost" size="icon" onClick={() => logout()}>
+            <div className="rounded-lg border border-border/60 bg-background/50">
+              <ThemeToggle className="h-9 w-9 text-muted-foreground hover:text-foreground" />
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => logout()} className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10">
               <LogOut className="size-4" />
             </Button>
           </div>

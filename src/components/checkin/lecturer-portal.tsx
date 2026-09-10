@@ -1142,42 +1142,45 @@ export function LecturerPortal() {
   return (
     <div className="min-h-screen flex flex-col bg-page-gradient">
       {/* Header */}
-      <header className="header-gradient sticky top-0 z-50">
+      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                <ClipboardCheck className="h-4 w-4 text-white" />
+            <div className="flex items-center gap-2.5">
+              <div className="size-9 rounded-xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-sky-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+                <ClipboardCheck className="h-5 w-5" />
               </div>
-              <h1 className="text-lg font-bold text-white">checkIn</h1>
+              <div>
+                <h1 className="text-base font-bold tracking-tight flex items-center gap-1.5">
+                  checkIn <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">Lecturer</span>
+                </h1>
+              </div>
             </div>
-            <Separator orientation="vertical" className="h-6 bg-white/20" />
-            <Badge className="bg-white/20 text-white border-white/30 text-[10px] px-1.5 py-0 hover:bg-white/30">{SCHOOL}</Badge>
-            <span className="text-sm text-white/70">Lecturer Portal</span>
+            <Separator orientation="vertical" className="h-5 bg-border/60 hidden sm:block" />
+            <Badge variant="outline" className="text-[10px] font-mono border-border/60 text-muted-foreground hidden sm:inline-flex">{SCHOOL}</Badge>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setProfileOpen(true)}
-              className="text-white/80 hover:text-white hover:bg-white/10 gap-1.5"
+              className="gap-2 text-foreground/90 hover:text-foreground hover:bg-muted/60"
             >
-              <UserCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">{user?.name}</span>
+              <UserCircle className="h-4 w-4 text-indigo-500" />
+              <span className="hidden sm:inline font-medium text-xs">{user?.name}</span>
               {user?.departmentName && (
-                <Badge variant="outline" className="text-[10px] border-white/30 text-white/80 bg-white/10">
+                <Badge variant="secondary" className="text-[10px] bg-muted text-muted-foreground font-mono">
                   {user.departmentName}
                 </Badge>
               )}
             </Button>
-            <div className="rounded-md border-white/20 bg-white/5 backdrop-blur-sm">
-              <ThemeToggle className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10" />
+            <div className="rounded-lg border border-border/60 bg-background/50">
+              <ThemeToggle className="h-9 w-9 text-muted-foreground hover:text-foreground" />
             </div>
             <Button
               variant="ghost"
               size="icon"
               onClick={handleLogout}
-              className="h-9 w-9 text-white/80 hover:text-red-200 hover:bg-white/10"
+              className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               title="Log out"
             >
               <LogOut className="h-4 w-4" />

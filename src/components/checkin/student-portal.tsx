@@ -743,62 +743,64 @@ function ActivePortal() {
   return (
     <div className="min-h-screen flex flex-col bg-page-gradient">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-card/80 backdrop-blur-sm border-b border-border/60">
-        <div className="header-gradient">
-          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-white/20 shrink-0">
-                <GraduationCap className="h-4 w-4 text-white" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-sm font-semibold truncate text-white">{user?.name}</h1>
-                <p className="text-xs text-white/70 truncate flex items-center gap-1.5">
-                  {user?.matricNumber} • {user?.departmentName} • Level {user?.level ?? '—'}
-                  <Badge className="bg-white/20 text-white border-white/30 text-[9px] px-1 py-0 hover:bg-white/30">{SCHOOL}</Badge>
-                </p>
-              </div>
+      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="size-9 rounded-xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-sky-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 shrink-0">
+              <GraduationCap className="h-5 w-5" />
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setProfileOpen(true)}
-                className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10"
-                title="View profile"
-              >
-                <UserCircle className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handlePrintAttendanceStatement}
-                className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10"
-                title="Print Official Attendance Statement"
-              >
-                <Printer className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={fetchSessions}
-                className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10"
-                title="Refresh sessions"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-              <div className="rounded-md border-white/20 bg-white/5 backdrop-blur-sm">
-                <ThemeToggle className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10" />
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleLogout}
-                className="h-9 w-9 text-white/80 hover:text-red-200 hover:bg-white/10"
-                title="Log out"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold tracking-tight text-foreground truncate flex items-center gap-2">
+                {user?.name}
+                <Badge variant="outline" className="text-[10px] border-indigo-500/30 text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 font-mono">
+                  {user?.level ?? 100}L
+                </Badge>
+              </h1>
+              <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5 font-mono">
+                {user?.matricNumber} • {user?.departmentName || 'SLIT'}
+              </p>
             </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setProfileOpen(true)}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+              title="View profile"
+            >
+              <UserCircle className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handlePrintAttendanceStatement}
+              className="h-8 w-8 text-muted-foreground hover:text-indigo-600 hover:bg-muted"
+              title="Print Official Attendance Statement"
+            >
+              <Printer className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={fetchSessions}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+              title="Refresh sessions"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <div className="rounded-lg border border-border/60 bg-background/50">
+              <ThemeToggle className="h-8 w-8 text-muted-foreground hover:text-foreground" />
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              title="Log out"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </header>

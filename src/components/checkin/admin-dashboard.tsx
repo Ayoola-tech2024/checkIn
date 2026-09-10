@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -261,38 +262,38 @@ export function AdminDashboard() {
   return (
     <div className="min-h-screen flex flex-col bg-page-gradient">
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-sm border-b header-gradient">
+      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-white/20 text-white">
+            <div className="flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-indigo-600 via-sky-600 to-emerald-500 shadow-md shadow-indigo-500/20 text-white">
               <Shield className="size-5" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold leading-tight text-white flex items-center gap-2">
-                checkIn
-                <Badge className="bg-white/20 text-white border-white/30 text-[10px] px-1.5 py-0 hover:bg-white/30">{SCHOOL}</Badge>
+              <h1 className="text-base font-bold tracking-tight text-foreground flex items-center gap-1.5">
+                checkIn <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">Admin</span>
               </h1>
-              <p className="text-xs text-white/70">Admin Panel</p>
             </div>
+            <Separator orientation="vertical" className="h-5 bg-border/60 hidden sm:block" />
+            <Badge variant="outline" className="text-[10px] font-mono border-border/60 text-muted-foreground hidden sm:inline-flex">{SCHOOL}</Badge>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setProfileOpen(true)}
-              className="border-white/20 text-white hover:bg-white/10 hover:text-white transition-colors gap-1.5"
+              className="gap-2 text-foreground/90 hover:text-foreground hover:bg-muted/60"
             >
-              <UserCircle className="size-4" />
-              <span className="hidden sm:inline">{user?.name}</span>
+              <UserCircle className="size-4 text-indigo-500" />
+              <span className="hidden sm:inline font-medium text-xs">{user?.name}</span>
             </Button>
-            <div className="rounded-md border-white/20 bg-white/5 backdrop-blur-sm">
-              <ThemeToggle className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10" />
+            <div className="rounded-lg border border-border/60 bg-background/50">
+              <ThemeToggle className="h-9 w-9 text-muted-foreground hover:text-foreground" />
             </div>
             <Button
               variant="ghost"
               size="icon"
               onClick={handleLogout}
-              className="h-9 w-9 text-white/80 hover:text-red-200 hover:bg-white/10"
+              className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               title="Log out"
             >
               <LogOut className="size-4" />
