@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MAX_SELFIE_SIZE_KB } from '@/lib/constants';
 import { landmarksToDescriptor, compressCanvasImage, EXPECTED_DESCRIPTOR_LENGTH } from '@/lib/face-utils';
+import { FACEMESH_TESSELATION } from '@/lib/face-tessellation';
 
 // ============================================================
 // MediaPipe script loading
@@ -210,8 +211,26 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
       setLastLandmarks(landmarks);
       setStatus('face-found');
 
-      // Draw High-Tech 3D FaceMesh Wireframe Grid Overlay
-      const drawPolyline = (indices: number[], color = 'rgba(16, 185, 129, 0.75)', width = 1.5, close = false) => {
+      // 1. Draw Full 3D Geometric Triangulation Mesh Grid (FACEMESH_TESSELATION)
+      // Exactly matching the biometric triangulation overlay in the reference design
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.40)'; // crisp geometric wireframe lines
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      if (Array.isArray(FACEMESH_TESSELATION)) {
+        for (let k = 0; k < FACEMESH_TESSELATION.length; k++) {
+          const edge = FACEMESH_TESSELATION[k];
+          const p1 = landmarks[edge[0]];
+          const p2 = landmarks[edge[1]];
+          if (p1 && p2) {
+            ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
+            ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
+          }
+        }
+      }
+      ctx.stroke();
+
+      // 2. Draw Key Feature Contours (Oval, Eyes, Lips)
+      const drawPolyline = (indices: number[], color = 'rgba(56, 189, 248, 0.95)', width = 1.8, close = false) => {
         ctx.strokeStyle = color;
         ctx.lineWidth = width;
         ctx.beginPath();
@@ -232,50 +251,82 @@ export function FaceCapture({ onCapture, mode: _mode, onError }: FaceCaptureProp
         ctx.stroke();
       };
 
-      // 1. Jawline & Face Oval
-      drawPolyline([10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109], 'rgba(16, 185, 129, 0.9)', 2, true);
+      // Outer Face Oval Contour
+      drawPolyline([10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109], 'rgba(56, 189, 248, 0.95)', 2, true);
 
-      // 2. Eyes
-      drawPolyline([33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158], 'rgba(56, 189, 248, 0.9)', 1.5, true);
-      drawPolyline([362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387], 'rgba(56, 189, 248, 0.9)', 1.5, true);
+      // Eyes
+      drawPolyline([33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158], 'rgba(255, 255, 255, 1.0)', 1.5, true);
+      drawPolyline([362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387], 'rgba(255, 255, 255, 1.0)', 1.5, true);
 
-      // 3. Eyebrows
-      drawPolyline([70, 63, 105, 66, 107, 55, 65, 52, 53, 46], 'rgba(16, 185, 129, 0.8)', 1.5, false);
-      drawPolyline([336, 296, 334, 293, 300, 285, 295, 282, 283, 276], 'rgba(16, 185, 129, 0.8)', 1.5, false);
+      // Lips
+      drawPolyline([61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78], 'rgba(56, 189, 248, 0.95)', 1.5, true);
 
-      // 4. Nose Ridge & Wings
-      drawPolyline([168, 6, 197, 195, 5, 4, 1, 19, 94, 2], 'rgba(16, 185, 129, 0.85)', 1.5, false);
-      drawPolyline([98, 97, 2, 326, 327, 278, 279, 360, 2, 131, 48, 115, 98], 'rgba(16, 185, 129, 0.6)', 1, true);
-
-      // 5. Mouth & Lips
-      drawPolyline([61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78], 'rgba(16, 185, 129, 0.85)', 1.5, true);
-
-      // 6. Facial Grid Cross-Mesh Lines (Tessellation Grid)
-      drawPolyline([10, 151, 9, 8, 168], 'rgba(16, 185, 129, 0.4)', 1, false);
-      drawPolyline([234, 127, 162, 21, 54, 103, 67, 109, 10, 168, 197, 5, 4, 1, 2, 98, 234], 'rgba(16, 185, 129, 0.35)', 1, true);
-      drawPolyline([454, 356, 389, 251, 284, 332, 297, 338, 10, 168, 197, 5, 4, 1, 2, 327, 454], 'rgba(16, 185, 129, 0.35)', 1, true);
-      drawPolyline([152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234], 'rgba(16, 185, 129, 0.35)', 1, false);
-      drawPolyline([152, 377, 400, 378, 365, 397, 288, 361, 323, 454], 'rgba(16, 185, 129, 0.35)', 1, false);
-
-      // 7. Render Glowing Landmark Dots on Keypoints
+      // 3. Draw Solid White Node Circles on Triangulation Vertices (Matching Image 1 & Image 2)
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(56, 189, 248, 0.8)';
+      ctx.shadowBlur = 4;
       const keyMeshPoints = [
-        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152,
+        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
         33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158,
         362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387,
-        1, 2, 98, 327, 168, 6, 197, 195, 5,
-        61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308
+        1, 2, 98, 327, 168, 6, 197, 195, 5, 4,
+        61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308,
+        70, 63, 105, 66, 107, 336, 296, 334, 293, 300
       ];
 
-      ctx.fillStyle = '#10b981';
       for (const idx of keyMeshPoints) {
         if (landmarks[idx]) {
           const x = landmarks[idx].x * canvas.width;
           const y = landmarks[idx].y * canvas.height;
           ctx.beginPath();
-          ctx.arc(x, y, 2, 0, 2 * Math.PI);
+          ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
           ctx.fill();
         }
       }
+      ctx.shadowBlur = 0;
+
+      // 4. Draw Corner Target Framing Brackets around Face (Matching Image 1: ┌ ┐ └ ┘)
+      let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+      for (const pt of landmarks) {
+        const px = pt.x * canvas.width;
+        const py = pt.y * canvas.height;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+      }
+      const pad = 24;
+      const bMinX = Math.max(12, minX - pad);
+      const bMinY = Math.max(12, minY - pad);
+      const bMaxX = Math.min(canvas.width - 12, maxX + pad);
+      const bMaxY = Math.min(canvas.height - 12, maxY + pad);
+      const cornerLen = 26;
+
+      ctx.strokeStyle = '#38bdf8'; // Cyan framing brackets
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+
+      // Top-Left Corner ┌
+      ctx.moveTo(bMinX, bMinY + cornerLen);
+      ctx.lineTo(bMinX, bMinY);
+      ctx.lineTo(bMinX + cornerLen, bMinY);
+
+      // Top-Right Corner ┐
+      ctx.moveTo(bMaxX - cornerLen, bMinY);
+      ctx.lineTo(bMaxX, bMinY);
+      ctx.lineTo(bMaxX, bMinY + cornerLen);
+
+      // Bottom-Left Corner └
+      ctx.moveTo(bMinX, bMaxY - cornerLen);
+      ctx.lineTo(bMinX, bMaxY);
+      ctx.lineTo(bMinX + cornerLen, bMaxY);
+
+      // Bottom-Right Corner ┘
+      ctx.moveTo(bMaxX - cornerLen, bMaxY);
+      ctx.lineTo(bMaxX, bMaxY);
+      ctx.lineTo(bMaxX, bMaxY - cornerLen);
+
+      ctx.stroke();
 
       ctx.fillStyle = 'rgba(0, 200, 100, 0.8)';
       ctx.font = '24px sans-serif';

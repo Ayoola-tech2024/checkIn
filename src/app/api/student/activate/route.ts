@@ -154,11 +154,10 @@ export async function POST(request: NextRequest) {
           if (Array.isArray(otherDescriptor) && otherDescriptor.length > 0) {
             const similarity = calculateSimilarity(candidateDescriptor, otherDescriptor);
             if (similarity >= 50.0) {
-              const otherMatric = (otherStudent.matric_number as string) || 'another account';
               return NextResponse.json(
                 {
                   success: false,
-                  error: `Biometric Registration Rejected: This face is already registered to student account (${otherMatric}) with ${similarity}% match. Multiple accounts per face are strictly prohibited.`,
+                  error: 'Biometric Registration Rejected: This face matches an existing student account already registered in the system. Multiple accounts per face are strictly prohibited. Please contact your administrator if you believe this is an error.',
                 },
                 { status: 409 }
               );
