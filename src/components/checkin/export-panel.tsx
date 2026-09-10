@@ -5,7 +5,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Download, FileSpreadsheet, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Download, FileSpreadsheet, Loader2, ChevronDown, ChevronRight, Printer } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -194,6 +194,126 @@ export function ExportPanel({ lecturerId }: ExportPanelProps) {
     toast.success('CSV exported successfully');
   };
 
+  const handlePrintSenateSheet = () => {
+    if (!exportData) return;
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      toast.error('Please allow popups to open the Senate Master Sheet');
+      return;
+    }
+
+    const totalSessions = exportData.departments?.[0]?.students?.[0]?.sessions?.length || 1;
+    let studentRowsHtml = '';
+    let sn = 1;
+
+    for (const dept of exportData.departments) {
+      for (const student of dept.students) {
+        const pct = student.attendancePercentage;
+        const isEligible = pct >= 75;
+        const caMark = (student.marks * 0.3).toFixed(1);
+        const statusBadge = isEligible
+          ? '<span style="color: #059669; font-weight: bold;">ELIGIBLE</span>'
+          : '<span style="color: #dc2626; font-weight: bold;">BARRED (&lt;75%)</span>';
+
+        studentRowsHtml += `
+          <tr>
+            <td style="text-align: center;">${sn++}</td>
+            <td>${student.name}</td>
+            <td><strong>${student.matricNumber}</strong></td>
+            <td>${dept.name}</td>
+            <td style="text-align: center;">${pct}%</td>
+            <td style="text-align: center;">${statusBadge}</td>
+            <td style="text-align: center;">${caMark} / 30</td>
+            <td style="text-align: center;">___ / 70</td>
+            <td style="text-align: center;">___ / 100</td>
+          </tr>
+        `;
+      }
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>FUTA Senate Master Sheet - ${exportData.courseCode}</title>
+        <style>
+          body { font-family: 'Times New Roman', Times, serif; margin: 30px; color: #111; }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+          .header h1 { margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 1px; }
+          .header h2 { margin: 5px 0; font-size: 16px; font-weight: normal; }
+          .header h3 { margin: 5px 0; font-size: 14px; font-style: italic; }
+          .meta-grid { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 20px; font-size: 13px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+          th, td { border: 1px solid #333; padding: 6px 8px; text-align: left; }
+          th { background-color: #f3f4f6; text-transform: uppercase; font-size: 11px; }
+          .signatures { display: flex; justify-content: space-between; margin-top: 60px; font-size: 12px; }
+          .sig-box { width: 28%; text-align: center; border-top: 1px solid #000; padding-top: 5px; }
+          @media print { body { margin: 15px; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Federal University of Technology, Akure</h1>
+          <h2>School of Logistics and Innovation Technology (SLIT)</h2>
+          <h3>Official Senate Attendance & Examination Master Sheet</h3>
+        </div>
+
+        <div class="meta-grid">
+          <div>
+            <p><strong>Course Code:</strong> ${exportData.courseCode}</p>
+            <p><strong>Course Title:</strong> ${exportData.courseName}</p>
+            <p><strong>Semester:</strong> ${exportData.semesterName}</p>
+          </div>
+          <div style="text-align: right;">
+            <p><strong>Total Sessions Held:</strong> ${totalSessions}</p>
+            <p><strong>Attendance Threshold:</strong> FUTA 75% Rule</p>
+            <p><strong>Date Generated:</strong> ${new Date().toLocaleDateString()}</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 30px; text-align: center;">S/N</th>
+              <th>Student Name</th>
+              <th>Matric Number</th>
+              <th>Department</th>
+              <th style="text-align: center;">Attendance %</th>
+              <th style="text-align: center;">FUTA 75% Status</th>
+              <th style="text-align: center;">CA Mark (30%)</th>
+              <th style="text-align: center;">Exam Mark (70%)</th>
+              <th style="text-align: center;">Total (100%)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${studentRowsHtml}
+          </tbody>
+        </table>
+
+        <div class="signatures">
+          <div class="sig-box">
+            Course Lecturer Signature & Date
+          </div>
+          <div class="sig-box">
+            Head of Department (HOD) Signature
+          </div>
+          <div class="sig-box">
+            Dean, SLIT Signature & Date
+          </div>
+        </div>
+
+        <script>
+          window.onload = function() { window.print(); };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWin.document.write(html);
+    printWin.document.close();
+  };
+
   if (loadingSemesters) {
     return (
       <div className="space-y-4 p-4">
@@ -251,9 +371,14 @@ export function ExportPanel({ lecturerId }: ExportPanelProps) {
             </div>
 
             {exportData && (
-              <Button onClick={handleExportCSV} className="w-full md:w-auto">
-                <Download className="mr-2 h-4 w-4" /> Export CSV
-              </Button>
+              <div className="flex gap-2 w-full md:w-auto col-span-1 md:col-span-3">
+                <Button onClick={handleExportCSV} className="flex-1 md:flex-initial">
+                  <Download className="mr-2 h-4 w-4" /> Export CSV
+                </Button>
+                <Button onClick={handlePrintSenateSheet} variant="outline" className="flex-1 md:flex-initial border-emerald-600 text-emerald-700 dark:text-emerald-400">
+                  <Printer className="mr-2 h-4 w-4 text-emerald-600" /> Print Senate Sheet
+                </Button>
+              </div>
             )}
           </div>
         </CardContent>

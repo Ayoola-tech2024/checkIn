@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { FaceCapture } from '@/components/checkin/face-capture';
+import { saveOfflineCheckIn, syncOfflineCheckIns } from '@/lib/offline-store';
 import { useGeoLocation } from '@/hooks/use-geo-location';
 import { isWithinVenueOrLecturer } from '@/lib/geo';
 import { queueCheckIn } from '@/lib/offline';
@@ -181,44 +182,49 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
           setStep('result');
         }
       } catch {
-        // Network error path — attempt to queue the check-in for
-        // store-and-forward replay when connectivity is restored.
-        const queued = await queueCheckIn({
-          sessionId: session.id,
-          studentId,
-          studentLat: locationResult.lat,
-          studentLng: locationResult.lng,
-          facialDescriptor: data.facialDescriptor,
-          selfieData: data.selfieData,
-          capturedAt: new Date().toISOString(),
-        });
+        // Network error / slow connection path — save check-in to IndexedDB for automatic store-and-forward
+        try {
+          await saveOfflineCheckIn({
+            sessionId: session.id,
+            studentLat: locationResult.lat,
+            studentLng: locationResult.lng,
+            studentAccuracy: locationResult.accuracy || 10,
+            facialDescriptor: data.facialDescriptor,
+            selfieData: data.selfieData,
+          });
 
-        if (queued) {
-          // Successfully queued offline — surface a success result.
-          toast.success(
-            'You are offline. Your check-in has been queued and will be submitted automatically when you reconnect.'
-          );
           const checkInRes: CheckInResult = {
             success: true,
             stage: 'complete',
-            message: 'Queued offline — will sync when online.',
+            message: 'Network offline / slow. Your check-in is saved in offline storage and will auto-sync to the server as soon as internet connects!',
             status: 'present',
           };
           setCheckInResult(checkInRes);
           setStep('result');
-        } else {
-          // IndexedDB unavailable or queue write failed — fall back to
-          // the original hard error so the student knows it didn't save.
-          const errorMsg = 'Network error. Please check your connection and try again.';
+        } catch (saveErr) {
+          console.error('Failed to save offline check-in:', saveErr);
+          const errorMsg = 'Network connection failed. Please check your signal and try again.';
           setFaceCaptureError(errorMsg);
-          toast.error(errorMsg);
         }
       } finally {
         setBiometricProcessing(false);
       }
     },
-    [locationResult, session.id, studentId]
+    [session, locationResult, studentId]
   );
+
+  // Auto-sync offline check-ins whenever network connection is restored
+  useEffect(() => {
+    const handleOnline = async () => {
+      console.log('[CheckInFlow] Online event detected! Triggering background sync...');
+      await syncOfflineCheckIns();
+    };
+    window.addEventListener('online', handleOnline);
+    syncOfflineCheckIns(); // initial sync check on mount
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
 
   const handleFaceError = useCallback((error: string) => {
     setFaceCaptureError(error);
