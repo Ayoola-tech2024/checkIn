@@ -6,6 +6,14 @@ import { getAuthUser } from '@/lib/auth-context';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = getAuthUser(request);
+    if (!auth || auth.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized. Admin access required.' },
+        { status: 401 }
+      );
+    }
+
     const { students } = (await request.json()) as {
       students: { name: string; matricNumber: string; department: string; level?: number | string }[];
     };

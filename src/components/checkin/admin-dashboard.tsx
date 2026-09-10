@@ -65,6 +65,8 @@ import {
   GraduationCap,
   MapPin,
   Upload,
+  FileSpreadsheet,
+  Download,
   Plus,
   LogOut,
   Shield,
@@ -603,6 +605,10 @@ export function AdminDashboard() {
               <MapPin className="size-4" />
               Venues
             </TabsTrigger>
+            <TabsTrigger value="csv-import" className="gap-1.5 text-emerald-700 dark:text-emerald-400">
+              <FileSpreadsheet className="size-4 text-emerald-600" />
+              Bulk CSV Import
+            </TabsTrigger>
           </TabsList>
 
           {/* Students Tab */}
@@ -612,6 +618,14 @@ export function AdminDashboard() {
               students={students}
               fetchStudents={fetchStudents}
               fetchDepartments={fetchDepartments}
+              fetchStats={fetchStats}
+            />
+          </TabsContent>
+
+          {/* Bulk CSV Import Tab */}
+          <TabsContent value="csv-import">
+            <CsvImportTab
+              fetchStudents={fetchStudents}
               fetchStats={fetchStats}
             />
           </TabsContent>
@@ -2389,6 +2403,227 @@ function VenuesTab({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+// ============================================================
+// Bulk CSV Import Tab
+// ============================================================
+
+interface CsvImportTabProps {
+  fetchStudents: () => void;
+  fetchStats: () => void;
+}
+
+function CsvImportTab({ fetchStudents, fetchStats }: CsvImportTabProps) {
+  const [parsedRows, setParsedRows] = useState<Array<{ name: string; matricNumber: string; department: string; level: number }>>([]);
+  const [importing, setImporting] = useState(false);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    imported: number;
+    skipped: number;
+    total: number;
+    errors?: string[];
+    credentials?: Array<{ matricNumber: string; name: string; defaultPassword: string }>;
+  } | null>(null);
+
+  const handleDownloadTemplate = () => {
+    const csv = `name,matricNumber,department,level\nAyoola Damisile,BIT/25/9975,BIT,100\nAjudua Nwabunwanne,BIT/25/0002,BIT,100\nAdebisi Oluwatobi,ENT/25/0001,EMT,100\n`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'student-import-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Downloaded student CSV import template!');
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const rows: Array<{ name: string; matricNumber: string; department: string; level: number }> = [];
+        for (const raw of results.data as any[]) {
+          const name = raw.name || raw.Name || raw['Student Name'] || '';
+          const matricNumber = raw.matricNumber || raw.matric_number || raw['Matric Number'] || raw.Matric || '';
+          const department = raw.department || raw.Department || raw['Department Code'] || '';
+          const levelStr = raw.level || raw.Level || '100';
+          const level = parseInt(String(levelStr), 10) || 100;
+
+          if (name && matricNumber && department) {
+            rows.push({ name, matricNumber, department, level });
+          }
+        }
+        setParsedRows(rows);
+        toast.success(`Parsed ${rows.length} student row(s) from CSV!`);
+      },
+      error: (err) => {
+        toast.error(`CSV Parse Error: ${err.message}`);
+      },
+    });
+  };
+
+  const handleExecuteImport = async () => {
+    if (parsedRows.length === 0) {
+      toast.error('No valid CSV rows to import.');
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const res = await fetch('/api/admin/csv-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ students: parsedRows }),
+      });
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        setImportResult(json.data);
+        setResultModalOpen(true);
+        fetchStudents();
+        fetchStats();
+        setParsedRows([]);
+        toast.success(`Import complete! ${json.data.imported} student(s) imported.`);
+      } else {
+        toast.error(json.error || 'Failed to execute CSV import');
+      }
+    } catch {
+      toast.error('Network error executing CSV import');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card className="card-elevated border-0 shadow-sm">
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileSpreadsheet className="size-5 text-emerald-600 dark:text-emerald-400" />
+                Bulk Student CSV Import
+              </CardTitle>
+              <CardDescription>
+                Import students in bulk with SLIT department validation and auto-generated surname passwords.
+              </CardDescription>
+            </div>
+            <Button variant="outline" onClick={handleDownloadTemplate} className="gap-2 shrink-0 border-emerald-600/30 text-emerald-700 dark:text-emerald-400">
+              <Download className="size-4 text-emerald-600" /> Download CSV Template
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="border-2 border-dashed rounded-xl p-6 text-center space-y-3 bg-muted/20">
+            <Upload className="size-8 text-muted-foreground mx-auto" />
+            <div>
+              <p className="text-sm font-medium">Select a CSV file to upload</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Required headers: name, matricNumber, department, level</p>
+            </div>
+            <Input type="file" accept=".csv" onChange={handleFileUpload} className="max-w-xs mx-auto text-xs cursor-pointer" />
+          </div>
+
+          {parsedRows.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">CSV Preview ({parsedRows.length} rows ready)</h3>
+                <Button onClick={handleExecuteImport} disabled={importing} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                  {importing && <Loader2 className="size-4 animate-spin" />}
+                  Execute Bulk Import ({parsedRows.length} Students)
+                </Button>
+              </div>
+
+              <div className="rounded-md border max-h-80 overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>#</TableHead>
+                      <TableHead>Student Name</TableHead>
+                      <TableHead>Matric Number</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Level</TableHead>
+                      <TableHead>Default Password</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {parsedRows.map((r, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="font-mono text-xs">{i + 1}</TableCell>
+                        <TableCell className="font-medium">{r.name}</TableCell>
+                        <TableCell className="font-mono text-xs">{r.matricNumber}</TableCell>
+                        <TableCell><Badge variant="outline">{r.department}</Badge></TableCell>
+                        <TableCell>{r.level}L</TableCell>
+                        <TableCell className="font-mono text-xs text-emerald-600 dark:text-emerald-400">
+                          {r.name.split(' ').pop()?.toUpperCase() || 'SURNAME'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Result & Credentials Modal */}
+      <Dialog open={resultModalOpen} onOpenChange={setResultModalOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg flex items-center gap-2">
+              <CheckCircle2 className="size-5 text-emerald-500" />
+              CSV Import Results Summary
+            </DialogTitle>
+            <DialogDescription>
+              Bulk import completed. Review generated credentials below.
+            </DialogDescription>
+          </DialogHeader>
+
+          {importResult && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                  <p className="text-2xl font-bold text-emerald-600">{importResult.imported}</p>
+                  <p className="text-xs text-muted-foreground">Imported</p>
+                </div>
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+                  <p className="text-2xl font-bold text-amber-600">{importResult.skipped}</p>
+                  <p className="text-xs text-muted-foreground">Skipped</p>
+                </div>
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <p className="text-2xl font-bold text-blue-600">{importResult.total}</p>
+                  <p className="text-xs text-muted-foreground">Total Rows</p>
+                </div>
+              </div>
+
+              {importResult.credentials && importResult.credentials.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Generated Student Credentials (Surname Default Passwords):</p>
+                  <div className="max-h-60 overflow-y-auto rounded-md border p-2 bg-muted/20 text-xs">
+                    {importResult.credentials.map((c, idx) => (
+                      <div key={idx} className="flex items-center justify-between py-1 border-b last:border-0">
+                        <span><strong>{c.name}</strong> ({c.matricNumber})</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{c.defaultPassword}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button onClick={() => setResultModalOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

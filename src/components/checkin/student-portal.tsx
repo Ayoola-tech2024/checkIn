@@ -33,6 +33,8 @@ import {
   UserCheck,
   UserX,
   CalendarClock,
+  Printer,
+  FileCheck,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Button } from '@/components/ui/button';
@@ -609,6 +611,112 @@ function ActivePortal() {
     toast.info('Logged out successfully');
   }, [logout]);
 
+  const handlePrintAttendanceStatement = useCallback(() => {
+    if (!user || !stats) return;
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      toast.error('Please allow popups to open your Attendance Statement');
+      return;
+    }
+
+    const isEligible = stats.attendanceRate >= 75;
+    const statusText = isEligible ? 'ELIGIBLE FOR EXAMINATIONS' : 'BARRED (< 75% ATTENDANCE)';
+    const statusColor = isEligible ? '#059669' : '#dc2626';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>FUTA Statement of Attendance - ${user.name}</title>
+        <style>
+          body { font-family: 'Times New Roman', Times, serif; margin: 40px; color: #111; line-height: 1.5; }
+          .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 25px; }
+          .header h1 { margin: 0; font-size: 22px; text-transform: uppercase; letter-spacing: 1px; }
+          .header h2 { margin: 4px 0; font-size: 16px; font-weight: normal; }
+          .header h3 { margin: 4px 0; font-size: 14px; font-style: italic; }
+          .profile-box { border: 1px solid #333; padding: 15px; border-radius: 6px; margin-bottom: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; }
+          .status-banner { border: 2px solid ${statusColor}; color: ${statusColor}; text-align: center; padding: 12px; font-size: 16px; font-weight: bold; margin-bottom: 25px; border-radius: 6px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 15px; }
+          th, td { border: 1px solid #333; padding: 8px 10px; text-align: left; }
+          th { background-color: #f3f4f6; text-transform: uppercase; font-size: 11px; }
+          .signatures { display: flex; justify-content: space-between; margin-top: 60px; font-size: 12px; }
+          .sig-box { width: 40%; text-align: center; border-top: 1px solid #000; padding-top: 5px; }
+          @media print { body { margin: 20px; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Federal University of Technology, Akure</h1>
+          <h2>School of Logistics and Innovation Technology (SLIT)</h2>
+          <h3>Official Student Biometric Statement of Course Attendance</h3>
+        </div>
+
+        <div class="profile-box">
+          <div>
+            <p><strong>Student Name:</strong> ${user.name}</p>
+            <p><strong>Matriculation Number:</strong> ${user.matricNumber}</p>
+            <p><strong>Department:</strong> ${user.departmentName || 'SLIT'}</p>
+          </div>
+          <div>
+            <p><strong>Academic Level:</strong> ${user.level || 100} Level</p>
+            <p><strong>3D Biometric Status:</strong> VERIFIED (Activated)</p>
+            <p><strong>Date Issued:</strong> ${new Date().toLocaleDateString()}</p>
+          </div>
+        </div>
+
+        <div class="status-banner">
+          EXAMINATION SITTING CLEARANCE STATUS: ${statusText}
+        </div>
+
+        <h4 style="margin-bottom: 5px;">Attendance Summary</h4>
+        <table>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Count / Rate</th>
+              <th>FUTA Senate Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Total Enrolled Lecture Sessions</td>
+              <td>${stats.totalSessions} Sessions</td>
+              <td>100% Minimum Class Offering</td>
+            </tr>
+            <tr>
+              <td>Verified Present Attendance</td>
+              <td>${stats.totalPresent} Sessions</td>
+              <td>-</td>
+            </tr>
+            <tr>
+              <td>Overall Attendance Rate</td>
+              <td><strong>${stats.attendanceRate}%</strong></td>
+              <td><strong>75% Mandatory Exam Threshold</strong></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="signatures">
+          <div class="sig-box">
+            Student Signature & Date
+          </div>
+          <div class="sig-box">
+            University Senate Registrar / Dean Stamp
+          </div>
+        </div>
+
+        <script>
+          window.onload = function() { window.print(); };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWin.document.write(html);
+    printWin.document.close();
+  }, [user, stats]);
+
   // Categorize sessions
   const activeSessions = sessions.filter((s) => s.status === 'active');
   const upcomingSessions = sessions.filter((s) => s.status === 'scheduled');
@@ -659,6 +767,15 @@ function ActivePortal() {
                 title="View profile"
               >
                 <UserCircle className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handlePrintAttendanceStatement}
+                className="h-9 w-9 text-white/80 hover:text-white hover:bg-white/10"
+                title="Print Official Attendance Statement"
+              >
+                <Printer className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
