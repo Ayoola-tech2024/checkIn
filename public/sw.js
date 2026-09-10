@@ -1,7 +1,9 @@
-// checkIn PWA Service Worker (Offline WASM & Shell Cache)
-const CACHE_NAME = 'checkin-v2';
+// checkIn PWA Service Worker (v3 - Deployment Resilience & WASM Cache)
+const CACHE_NAME = 'checkin-v3';
 const STATIC_ASSETS = [
   '/',
+  '/logo.svg',
+  '/favicon.ico',
   '/manifest.json',
   '/wasm/camera_utils.js',
   '/wasm/face_mesh.js',
@@ -19,7 +21,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('[SW] Some assets failed pre-caching:', err);
+        console.warn('[SW] Pre-caching completed with warnings:', err);
       });
     })
   );
@@ -38,28 +40,51 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Never intercept API requests with static cache
-  if (event.request.url.includes('/api/')) {
+  const url = new URL(event.request.url);
+
+  // 1. Bypass SW for all API requests
+  if (url.pathname.startsWith('/api/')) {
     return;
   }
 
-  // Stale-while-revalidate for WASM and static assets
+  // 2. Network-first strategy for Next.js build chunks (/_next/) and navigation requests
+  // This ensures new Vercel deployments immediately serve fresh static chunks matching the new build.
+  if (url.pathname.startsWith('/_next/') || event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET') {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => {
+            if (cached) return cached;
+            if (event.request.mode === 'navigate') {
+              return caches.match('/');
+            }
+          });
+        })
+    );
+    return;
+  }
+
+  // 3. Stale-while-revalidate for local WASM assets & static images
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Fetch fresh version in background
-        fetch(event.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-          }
-        }).catch(() => {});
+        fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
+            }
+          })
+          .catch(() => {});
         return cachedResponse;
       }
-      return fetch(event.request).catch(() => {
-        if (event.request.mode === 'navigate') {
-          return caches.match('/');
-        }
-      });
+      return fetch(event.request);
     })
   );
 });

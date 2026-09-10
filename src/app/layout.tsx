@@ -58,6 +58,17 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              // Auto-recover from ChunkLoadError when a new Vercel deployment updates static hashes
+              window.addEventListener('error', function(e) {
+                if (e && e.message && (e.message.indexOf('ChunkLoadError') !== -1 || e.message.indexOf('Loading chunk') !== -1)) {
+                  console.warn('[checkIn] New deployment detected. Refreshing assets...');
+                  if (!window.__chunkReloaded) {
+                    window.__chunkReloaded = true;
+                    window.location.reload();
+                  }
+                }
+              });
+
               if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js').catch(function() {});
