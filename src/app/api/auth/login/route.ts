@@ -36,7 +36,14 @@ export async function POST(request: NextRequest) {
         );
       }
       const { data: admins, error } = await db.from('admins').select('*').eq('email', email);
-      if (error || !admins || admins.length === 0) {
+      if (error) {
+        console.error('DB error looking up admin:', error);
+        return NextResponse.json(
+          { success: false, error: 'Service temporarily unavailable. Please try again in a moment.' },
+          { status: 503 }
+        );
+      }
+      if (!admins || admins.length === 0) {
         return NextResponse.json(
           { success: false, error: 'Invalid credentials' },
           { status: 401 }
@@ -76,7 +83,14 @@ export async function POST(request: NextRequest) {
       }
 
       const { data: lecturers, error } = await db.from('lecturers').select('*').eq('email', email);
-      if (error || !lecturers || lecturers.length === 0) {
+      if (error) {
+        console.error('DB error looking up lecturer:', error);
+        return NextResponse.json(
+          { success: false, error: 'Service temporarily unavailable. Please try again in a moment.' },
+          { status: 503 }
+        );
+      }
+      if (!lecturers || lecturers.length === 0) {
         return NextResponse.json(
           { success: false, error: 'Invalid credentials' },
           { status: 401 }
@@ -212,18 +226,32 @@ export async function POST(request: NextRequest) {
       let student: Record<string, unknown> | null = null;
 
       if (matricNumber) {
-        const { data: students } = await db
+        const { data: students, error: dbErr } = await db
           .from('students')
           .select('*')
           .eq('matric_number', matricNumber);
+        if (dbErr) {
+          console.error('DB error looking up student by matric:', dbErr);
+          return NextResponse.json(
+            { success: false, error: 'Service temporarily unavailable. Please try again in a moment.' },
+            { status: 503 }
+          );
+        }
         student = (students?.[0] as Record<string, unknown>) || null;
       }
 
       if (!student && email) {
-        const { data: students } = await db
+        const { data: students, error: dbErr } = await db
           .from('students')
           .select('*')
           .eq('email', email);
+        if (dbErr) {
+          console.error('DB error looking up student by email:', dbErr);
+          return NextResponse.json(
+            { success: false, error: 'Service temporarily unavailable. Please try again in a moment.' },
+            { status: 503 }
+          );
+        }
         student = (students?.[0] as Record<string, unknown>) || null;
       }
 
