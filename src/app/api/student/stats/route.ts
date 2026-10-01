@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         .slice(0, 5)
         .map(async (a: Record<string, unknown>) => {
           const sessionId = a.session_id as string;
-          const { data: session } = await db.from('sessions').select('id, title, scheduled_at').eq('id', sessionId);
+          const { data: session } = await db.from('sessions').select('id, title, course_id, scheduled_at').eq('id', sessionId);
           const sessionData = session?.[0] as Record<string, unknown> | undefined;
 
           let courseName = '';

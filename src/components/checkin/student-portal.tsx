@@ -1025,6 +1025,9 @@ function ActivePortal() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Course Attendance Breakdown */}
+            <CourseBreakdownCard sessions={sessions} />
           </section>
         )}
 
@@ -1190,6 +1193,137 @@ function RecentAttendanceItem({ record }: RecentAttendanceItemProps) {
 }
 
 // ============================================================
+// Session Countdown Timer
+// ============================================================
+
+function SessionCountdownTimer({ scheduledAt, durationMinutes }: { scheduledAt?: string | null; durationMinutes?: number }) {
+  const [timeLeft, setTimeLeft] = useState<{ minutes: number; seconds: number; isExpired: boolean }>({ minutes: 0, seconds: 0, isExpired: false });
+
+  useEffect(() => {
+    const calculateTimeLeft = () => {
+      if (!scheduledAt) {
+        setTimeLeft({ minutes: 0, seconds: 0, isExpired: false });
+        return;
+      }
+      const startTime = new Date(scheduledAt).getTime();
+      const endTime = startTime + (durationMinutes || 15) * 60 * 1000;
+      const now = Date.now();
+      const diff = endTime - now;
+
+      if (diff <= 0) {
+        setTimeLeft({ minutes: 0, seconds: 0, isExpired: true });
+      } else {
+        const minutes = Math.floor(diff / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        setTimeLeft({ minutes, seconds, isExpired: false });
+      }
+    };
+
+    calculateTimeLeft();
+    const interval = setInterval(calculateTimeLeft, 1000);
+    return () => clearInterval(interval);
+  }, [scheduledAt, durationMinutes]);
+
+  if (!scheduledAt) return null;
+
+  if (timeLeft.isExpired) {
+    return <span className="text-[11px] font-mono text-amber-600 dark:text-amber-400 font-medium">Session Closing</span>;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+      <Clock className="h-3 w-3 animate-pulse text-emerald-500" />
+      {String(timeLeft.minutes).padStart(2, '0')}:{String(timeLeft.seconds).padStart(2, '0')} left
+    </span>
+  );
+}
+
+// ============================================================
+// Course Breakdown Card
+// ============================================================
+
+function CourseBreakdownCard({ sessions }: { sessions: SessionWithAttendance[] }) {
+  const courseMap = new Map<string, { code: string; name: string; total: number; present: number; absent: number }>();
+
+  sessions.forEach((s) => {
+    const key = s.courseCode || s.courseName || 'COURSE';
+    if (!courseMap.has(key)) {
+      courseMap.set(key, {
+        code: s.courseCode || key,
+        name: s.courseName || key,
+        total: 0,
+        present: 0,
+        absent: 0,
+      });
+    }
+    const item = courseMap.get(key)!;
+    // Only count sessions that have actually occurred or where attendance was marked
+    if (s.status === 'completed' || s.attendance) {
+      item.total += 1;
+      if (s.attendance?.status === 'present') {
+        item.present += 1;
+      } else if (
+        s.attendance?.status === 'absent' ||
+        s.attendance?.status === 'rejected_identity' ||
+        s.attendance?.status === 'rejected_location'
+      ) {
+        item.absent += 1;
+      }
+    }
+  });
+
+  const courseStats = Array.from(courseMap.values());
+  if (courseStats.length === 0) return null;
+
+  return (
+    <Card className="card-elevated border-0 shadow-sm">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <BookOpen className="h-4 w-4 text-indigo-500" />
+            Course Attendance Breakdown
+          </p>
+          <Badge variant="outline" className="text-[10px] font-mono">
+            {courseStats.length} Enrolled Course(s)
+          </Badge>
+        </div>
+        <div className="space-y-2.5">
+          {courseStats.map((course) => {
+            const rate = course.total > 0 ? Math.round((course.present / course.total) * 100) : 100;
+            const isEligible = rate >= 75;
+
+            return (
+              <div key={course.code} className="p-3 rounded-xl border border-border/50 bg-background/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      {course.code}
+                      <span className="font-normal text-muted-foreground">• {course.name}</span>
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {course.present} of {course.total} completed session(s) attended
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-sm font-bold font-mono ${isEligible ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                      {course.total > 0 ? `${rate}%` : 'N/A'}
+                    </span>
+                    <Badge className={`block text-[9px] px-1 py-0 ${isEligible ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' : 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30'}`}>
+                      {course.total === 0 ? 'No sessions yet' : isEligible ? 'Exam Clearance OK' : 'At Risk (<75%)'}
+                    </Badge>
+                  </div>
+                </div>
+                <Progress value={course.total > 0 ? rate : 100} className="h-1.5 bg-muted" />
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================
 // Session Card
 // ============================================================
 
@@ -1197,6 +1331,7 @@ interface SessionCardProps {
   session: SessionWithAttendance;
   onCheckIn?: () => void;
 }
+
 
 function SessionCard({ session, onCheckIn }: SessionCardProps) {
   const isActive = session.status === 'active';
@@ -1268,13 +1403,16 @@ function SessionCard({ session, onCheckIn }: SessionCardProps) {
     switch (session.status) {
       case 'active':
         return (
-          <Badge className="bg-emerald-500 hover:bg-emerald-600 gap-1">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
-            </span>
-            Live
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge className="bg-emerald-500 hover:bg-emerald-600 gap-1">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+              </span>
+              Live
+            </Badge>
+            <SessionCountdownTimer scheduledAt={session.scheduledAt} durationMinutes={session.durationMinutes} />
+          </div>
         );
       case 'scheduled':
         return (

@@ -25,6 +25,7 @@ import {
   UserCheck,
   ClipboardList,
   TrendingUp,
+  Search,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -155,9 +156,12 @@ export function HodPortal() {
   const [editCourseForm, setEditCourseForm] = useState({ id: '', name: '', code: '', level: '100', lecturerId: '' });
   const [formLoading, setFormLoading] = useState(false);
 
-  // Filter
+  // Filter & Search
   const [studentLevelFilter, setStudentLevelFilter] = useState<string>('all');
   const [courseLevelFilter, setCourseLevelFilter] = useState<string>('all');
+  const [studentSearch, setStudentSearch] = useState('');
+  const [courseSearch, setCourseSearch] = useState('');
+  const [lecturerSearch, setLecturerSearch] = useState('');
 
   const hodDeptId = user?.hodDepartmentId || user?.departmentId;
 
@@ -399,13 +403,33 @@ export function HodPortal() {
   };
 
   // Filtered data
-  const filteredStudents = studentLevelFilter === 'all'
-    ? students
-    : students.filter(s => s.level === parseInt(studentLevelFilter, 10));
+  const filteredStudents = students.filter((s) => {
+    const matchesLevel = studentLevelFilter === 'all' || s.level === parseInt(studentLevelFilter, 10);
+    const matchesSearch =
+      !studentSearch.trim() ||
+      s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+      s.matricNumber.toLowerCase().includes(studentSearch.toLowerCase()) ||
+      (s.email && s.email.toLowerCase().includes(studentSearch.toLowerCase()));
+    return matchesLevel && matchesSearch;
+  });
 
-  const filteredCourses = courseLevelFilter === 'all'
-    ? courses
-    : courses.filter(c => c.level === parseInt(courseLevelFilter, 10));
+  const filteredCourses = courses.filter((c) => {
+    const matchesLevel = courseLevelFilter === 'all' || c.level === parseInt(courseLevelFilter, 10);
+    const matchesSearch =
+      !courseSearch.trim() ||
+      c.name.toLowerCase().includes(courseSearch.toLowerCase()) ||
+      c.code.toLowerCase().includes(courseSearch.toLowerCase()) ||
+      (c.lecturerName && c.lecturerName.toLowerCase().includes(courseSearch.toLowerCase()));
+    return matchesLevel && matchesSearch;
+  });
+
+  const filteredLecturers = lecturers.filter((l) => {
+    return (
+      !lecturerSearch.trim() ||
+      l.name.toLowerCase().includes(lecturerSearch.toLowerCase()) ||
+      l.email.toLowerCase().includes(lecturerSearch.toLowerCase())
+    );
+  });
 
   // Chart data
   const levelChartData = Object.entries(stats?.studentsByLevel || {}).map(([level, count], i) => ({
@@ -686,9 +710,18 @@ export function HodPortal() {
 
           {/* Lecturers Tab */}
           <TabsContent value="lecturers" className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Department Lecturers</h2>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search lecturer..."
+                    value={lecturerSearch}
+                    onChange={(e) => setLecturerSearch(e.target.value)}
+                    className="pl-9 h-9 text-xs"
+                  />
+                </div>
                 <Button variant="outline" size="sm" onClick={fetchData}>
                   <RefreshCw className="size-3.5 mr-1" />
                   Refresh
@@ -700,12 +733,14 @@ export function HodPortal() {
               </div>
             </div>
 
-            {lecturers.length === 0 ? (
+            {filteredLecturers.length === 0 ? (
               <Card>
                 <CardContent className="p-8 text-center">
                   <Users className="size-12 mx-auto mb-3 text-muted-foreground/40" />
-                  <h3 className="font-medium mb-1">No Lecturers Yet</h3>
-                  <p className="text-sm text-muted-foreground mb-4">Add your first lecturer to get started</p>
+                  <h3 className="font-medium mb-1">No Lecturers Found</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {lecturerSearch ? 'No lecturer matches your search.' : 'Add your first lecturer to get started'}
+                  </p>
                   <Button onClick={() => setLecturerDialogOpen(true)}>
                     <UserPlus className="size-4 mr-2" />
                     Add Lecturer
@@ -726,7 +761,7 @@ export function HodPortal() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {lecturers.map((lect) => (
+                      {filteredLecturers.map((lect) => (
                         <TableRow key={lect.id}>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-2">
@@ -796,11 +831,20 @@ export function HodPortal() {
 
           {/* Courses Tab */}
           <TabsContent value="courses" className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Department Courses</h2>
-              <div className="flex gap-2 items-center">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-56">
+                  <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search course..."
+                    value={courseSearch}
+                    onChange={(e) => setCourseSearch(e.target.value)}
+                    className="pl-9 h-9 text-xs"
+                  />
+                </div>
                 <Select value={courseLevelFilter} onValueChange={setCourseLevelFilter}>
-                  <SelectTrigger className="w-32 h-8 text-xs">
+                  <SelectTrigger className="w-28 h-9 text-xs">
                     <SelectValue placeholder="Level" />
                   </SelectTrigger>
                   <SelectContent>
@@ -902,11 +946,20 @@ export function HodPortal() {
 
           {/* Students Tab */}
           <TabsContent value="students" className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Department Students</h2>
-              <div className="flex gap-2 items-center">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search student or matric..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    className="pl-9 h-9 text-xs"
+                  />
+                </div>
                 <Select value={studentLevelFilter} onValueChange={setStudentLevelFilter}>
-                  <SelectTrigger className="w-32 h-8 text-xs">
+                  <SelectTrigger className="w-28 h-9 text-xs">
                     <SelectValue placeholder="Level" />
                   </SelectTrigger>
                   <SelectContent>
