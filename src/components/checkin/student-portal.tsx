@@ -744,7 +744,7 @@ function ActivePortal() {
     <div className="min-h-screen flex flex-col bg-page-gradient">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <div className="size-9 rounded-xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-sky-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 shrink-0">
               <GraduationCap className="h-5 w-5" />
@@ -806,7 +806,7 @@ function ActivePortal() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-4 space-y-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         {/* Offline status banner (queued check-ins / connectivity) */}
         <OfflineBanner />
         {/* Loading State */}
@@ -1093,8 +1093,9 @@ function ActivePortal() {
 
       {/* Footer */}
       <footer className="bg-secondary/50 border-t border-border/60 mt-auto">
-        <div className="max-w-2xl mx-auto px-4 py-3 text-center text-xs text-muted-foreground">
-          checkIn — Student Attendance Platform
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>checkIn — SLIT Federal University of Technology, Akure</span>
+          <span>Biometric MediaPipe 468 & Haversine Proximity Validated</span>
         </div>
       </footer>
     </div>
