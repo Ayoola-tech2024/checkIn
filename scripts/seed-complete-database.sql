@@ -213,11 +213,11 @@ ON CONFLICT (email) DO NOTHING;
 
 -- Students (Default Initial Passwords: Surname in Block Capitals)
 INSERT INTO students (id, name, matric_number, email, password_hash, school_id, department_id, level, activated) VALUES
-('e1e1e1e1-1111-4444-8888-111111111111', 'Ayoola Damisile', 'BIT/25/9975', 'damisile.ayoola@futa.edu.ng', '$2b$10$tv57eHZHxr5QL.dxZqsnzOGeACCsDMviAO1UMO70xTsDa6gV3g8Ti', '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 100, FALSE),
-('e2e2e2e2-2222-4444-8888-222222222222', 'Ajudua Nwabunwanne', 'BIT/25/0002', 'nwabunwanne.ajudua@futa.edu.ng', '$2b$10$j8jmo6ebooNMsAiTe7eqUuQCzTAJFHnGECZFX1zOArWqG2Fx7pGhu', '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 100, FALSE),
-('e3e3e3e3-3333-4444-8888-333333333333', 'Njoku George', 'BIT/25/9900', 'george.njoku@futa.edu.ng', '$2b$10$yaKNJ21CfMPyNPUck6CVS.zOc3rSBg27uI1NbNqKtLnDl.Vgxgmym', '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 100, FALSE),
-('e4e4e4e4-4444-4444-8888-444444444444', 'Imisi Samuel', 'BIT/25/9971', 'samuel.imisi@futa.edu.ng', '$2b$10$RO60PUO/n6Q2aKrjXr/mMeAp3zmOOsasqFKNX.GPJcF4J.YiAA636', '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 100, FALSE),
-('e5e5e5e5-5555-4444-8888-555555555555', 'Adebisi Oluwatobi', 'ENT/25/0001', 'oluwatobi.adebisi@futa.edu.ng', '$2b$10$FIZ7U1m5CMeoYNqN4kHQCOPgTPcDZfDoBty7HIMcI1oKfXnYEXs5u', '4aeb5578-eedf-40c5-978f-41716224683e', 'b4b3541c-0629-4948-b994-b0050b743fc0', 100, FALSE)
+('e1e1e1e1-1111-4444-8888-111111111111', 'Ayoola Damisile', 'BIT/25/9975', 'damisile.ayoola@futa.edu.ng', '$2b$10$tv57eHZHxr5QL.dxZqsnzOGeACCsDMviAO1UMO70xTsDa6gV3g8Ti', '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 100, TRUE),
+('e2e2e2e2-2222-4444-8888-222222222222', 'Ajudua Nwabunwanne', 'BIT/25/0002', 'nwabunwanne.ajudua@futa.edu.ng', '$2b$10$j8jmo6ebooNMsAiTe7eqUuQCzTAJFHnGECZFX1zOArWqG2Fx7pGhu', '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 100, TRUE),
+('e3e3e3e3-3333-4444-8888-333333333333', 'Njoku George', 'BIT/25/9900', 'george.njoku@futa.edu.ng', '$2b$10$yaKNJ21CfMPyNPUck6CVS.zOc3rSBg27uI1NbNqKtLnDl.Vgxgmym', '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 100, TRUE),
+('e4e4e4e4-4444-4444-8888-444444444444', 'Imisi Samuel', 'BIT/25/9971', 'samuel.imisi@futa.edu.ng', '$2b$10$RO60PUO/n6Q2aKrjXr/mMeAp3zmOOsasqFKNX.GPJcF4J.YiAA636', '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 100, TRUE),
+('e5e5e5e5-5555-4444-8888-555555555555', 'Adebisi Oluwatobi', 'ENT/25/0001', 'oluwatobi.adebisi@futa.edu.ng', '$2b$10$FIZ7U1m5CMeoYNqN4kHQCOPgTPcDZfDoBty7HIMcI1oKfXnYEXs5u', '4aeb5578-eedf-40c5-978f-41716224683e', 'b4b3541c-0629-4948-b994-b0050b743fc0', 100, TRUE)
 ON CONFLICT (matric_number) DO NOTHING;
 
 -- Courses
