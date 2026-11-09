@@ -32,8 +32,6 @@ interface RoleOption {
   badge: string;
   icon: React.ReactNode;
   hint: string;
-  defaultId: string;
-  defaultPass: string;
 }
 
 const ROLE_OPTIONS: RoleOption[] = [
@@ -43,8 +41,6 @@ const ROLE_OPTIONS: RoleOption[] = [
     badge: 'Undergraduate',
     icon: <GraduationCap className="size-4" />,
     hint: 'Enter your FUTA matric number or student email',
-    defaultId: 'BIT/25/9975',
-    defaultPass: 'DAMISILE',
   },
   {
     role: 'lecturer',
@@ -52,8 +48,6 @@ const ROLE_OPTIONS: RoleOption[] = [
     badge: 'Faculty',
     icon: <BookOpen className="size-4" />,
     hint: 'Enter your institutional staff email address',
-    defaultId: 'c.nwosu@futa.edu.ng',
-    defaultPass: 'NWOSU',
   },
   {
     role: 'hod',
@@ -61,8 +55,6 @@ const ROLE_OPTIONS: RoleOption[] = [
     badge: 'Department Head',
     icon: <Users className="size-4" />,
     hint: 'Enter your Head of Department administrative email',
-    defaultId: 'a.okonkwo@futa.edu.ng',
-    defaultPass: 'OKONKWO',
   },
   {
     role: 'admin',
@@ -70,16 +62,14 @@ const ROLE_OPTIONS: RoleOption[] = [
     badge: 'Superuser',
     icon: <Shield className="size-4" />,
     hint: 'Enter central administration credentials',
-    defaultId: 'stackdev.futa@gmail.com',
-    defaultPass: 'STACK',
   },
 ];
 
 export function LoginScreen() {
   const { login } = useAuthStore();
   const [selectedRole, setSelectedRole] = useState<UserRole>('student');
-  const [identifier, setIdentifier] = useState('BIT/25/9975');
-  const [password, setPassword] = useState('DAMISILE');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -89,19 +79,8 @@ export function LoginScreen() {
   const handleRoleChange = (role: UserRole) => {
     setSelectedRole(role);
     setError('');
-    const config = ROLE_OPTIONS.find((r) => r.role === role);
-    if (config) {
-      setIdentifier(config.defaultId);
-      setPassword(config.defaultPass);
-    }
-  };
-
-  const handleQuickFill = (role: UserRole, id: string, pass: string) => {
-    setSelectedRole(role);
-    setIdentifier(id);
-    setPassword(pass);
-    setError('');
-    toast.info(`Filled credentials for ${role.toUpperCase()}`);
+    setIdentifier('');
+    setPassword('');
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -243,47 +222,6 @@ export function LoginScreen() {
             </div>
           </div>
 
-          {/* Quick Demo Credentials Strip */}
-          <div className="p-4 rounded-xl bg-[var(--card)] border border-[var(--border)] space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-[var(--foreground)]">One-Click Evaluator Accounts:</span>
-              <span className="text-[var(--muted-foreground)] text-[11px]">Click to pre-fill</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickFill('student', 'BIT/25/9975', 'DAMISILE')}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] hover:bg-emerald-500/10 hover:text-emerald-600 border border-[var(--border)] transition-colors flex items-center gap-1.5"
-              >
-                <GraduationCap className="size-3.5 text-emerald-600" />
-                <span>Student (Damisile)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('lecturer', 'c.nwosu@futa.edu.ng', 'NWOSU')}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] hover:bg-blue-500/10 hover:text-blue-600 border border-[var(--border)] transition-colors flex items-center gap-1.5"
-              >
-                <BookOpen className="size-3.5 text-blue-600" />
-                <span>Lecturer (Dr. Nwosu)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('hod', 'a.okonkwo@futa.edu.ng', 'OKONKWO')}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] hover:bg-purple-500/10 hover:text-purple-600 border border-[var(--border)] transition-colors flex items-center gap-1.5"
-              >
-                <Users className="size-3.5 text-purple-600" />
-                <span>HOD (Dr. Okonkwo)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('admin', 'stackdev.futa@gmail.com', 'STACK')}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] hover:bg-rose-500/10 hover:text-rose-600 border border-[var(--border)] transition-colors flex items-center gap-1.5"
-              >
-                <Shield className="size-3.5 text-rose-600" />
-                <span>Admin</span>
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Right Column: Sleek Authentication Card */}
