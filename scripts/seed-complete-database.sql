@@ -182,13 +182,13 @@ ON CONFLICT (code) DO NOTHING;
 
 -- Departments
 INSERT INTO departments (id, name, code, school_id) VALUES
-('7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 'Biomedical Information Technology', 'BIT', '4aeb5578-eedf-40c5-978f-41716224683e'),
+('7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 'Business Information Technology', 'BIT', '4aeb5578-eedf-40c5-978f-41716224683e'),
 ('b4b3541c-0629-4948-b994-b0050b743fc0', 'Entrepreneurship Management Technology', 'EMT', '4aeb5578-eedf-40c5-978f-41716224683e'),
 ('a1a1a1a1-1111-4444-8888-111111111111', 'Financial Technology', 'FINT', '4aeb5578-eedf-40c5-978f-41716224683e'),
 ('a2a2a2a2-2222-4444-8888-222222222222', 'Logistics and Transport Technology', 'LTT', '4aeb5578-eedf-40c5-978f-41716224683e'),
 ('a3a3a3a3-3333-4444-8888-333333333333', 'Project Management Technology', 'PMT', '4aeb5578-eedf-40c5-978f-41716224683e'),
 ('a4a4a4a4-4444-4444-8888-444444444444', 'Procurement Management Technology', 'PRMT', '4aeb5578-eedf-40c5-978f-41716224683e'),
-('a5a5a5a5-5555-4444-8888-555555555555', 'Supply Chain & Information Management', 'SIMT', '4aeb5578-eedf-40c5-978f-41716224683e')
+('a5a5a5a5-5555-4444-8888-555555555555', 'Securities and Investment Management Technology', 'SIMT', '4aeb5578-eedf-40c5-978f-41716224683e')
 ON CONFLICT (code) DO NOTHING;
 
 -- Venues (Real FUTA Campus Coordinates)
@@ -222,7 +222,7 @@ ON CONFLICT (matric_number) DO NOTHING;
 
 -- Courses
 INSERT INTO courses (id, name, code, level, school_id, department_id, lecturer_id) VALUES
-('f1f1f1f1-1111-4444-8888-111111111111', 'Introduction to Biomedical Information Technology', 'BIT101', 100, '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 'd1d1d1d1-1111-4444-8888-111111111111'),
+('f1f1f1f1-1111-4444-8888-111111111111', 'Introduction to Business Information Technology', 'BIT101', 100, '4aeb5578-eedf-40c5-978f-41716224683e', '7ceb6b1a-3a62-4d67-b7c3-f9b2aa5e321b', 'd1d1d1d1-1111-4444-8888-111111111111'),
 ('f2f2f2f2-2222-4444-8888-222222222222', 'Entrepreneurship Fundamentals', 'EMT101', 100, '4aeb5578-eedf-40c5-978f-41716224683e', 'b4b3541c-0629-4948-b994-b0050b743fc0', 'd3d3d3d3-3333-4444-8888-333333333333')
 ON CONFLICT (code) DO NOTHING;
 
