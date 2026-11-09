@@ -779,6 +779,18 @@ function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
   >([]);
   const [loading, setLoading] = useState(true);
   const [actioning, setActioning] = useState<string | null>(null);
+  const [inspectItem, setInspectItem] = useState<{
+    id: string;
+    studentName: string;
+    matricNumber: string;
+    departmentName: string;
+    sessionTitle: string;
+    courseName: string;
+    venueName: string;
+    similarityScore: number | null;
+    checkInTime: string | null;
+    selfieData: string | null;
+  } | null>(null);
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -810,13 +822,16 @@ function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
       });
       const json = await res.json();
       if (json.success) {
-        toast.success(action === 'approve' ? 'Student approved' : 'Student rejected');
+        toast.success(action === 'approve' ? 'Attendance approved and marked present' : 'Attendance rejected');
+        if (inspectItem?.id === attendanceId) {
+          setInspectItem(null);
+        }
         fetchQueue();
       } else {
         toast.error(json.error || 'Failed to process action');
       }
     } catch {
-      toast.error('Network error');
+      toast.error('Network error processing review');
     } finally {
       setActioning(null);
     }
@@ -826,104 +841,225 @@ function ReviewQueueTab({ lecturerId }: ReviewQueueTabProps) {
     return (
       <div className="space-y-3 p-4">
         {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-24" />
+          <Skeleton key={i} className="h-28" />
         ))}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <ClipboardCheck className="h-5 w-5 text-primary" />
-          Pending Reviews
-          {queue.length > 0 && (
-            <Badge variant="secondary" className="bg-amber-500 text-white">
-              {queue.length}
-            </Badge>
-          )}
-        </h3>
+    <div className="space-y-4 p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-bold flex items-center gap-2">
+            <ClipboardCheck className="h-5 w-5 text-indigo-500" />
+            Borderline Biometric Review Queue
+            {queue.length > 0 && (
+              <Badge variant="secondary" className="bg-amber-500 text-white font-mono">
+                {queue.length} Pending
+              </Badge>
+            )}
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Students whose facial landmark similarity scored between 40%–50% require manual verification.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={fetchQueue} className="gap-1.5 self-start sm:self-auto">
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </Button>
       </div>
 
       {queue.length === 0 ? (
-        <Card className="card-elevated">
-          <CardContent className="p-8 text-center text-muted-foreground">
-            No pending reviews
+        <Card className="card-elevated border-dashed border-2">
+          <CardContent className="p-12 text-center text-muted-foreground">
+            <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto mb-3" />
+            <h4 className="font-semibold text-foreground text-base mb-1">Queue is Clear</h4>
+            <p className="text-sm max-w-md mx-auto">
+              No pending student check-ins currently require manual review. All recent attendances met automatic threshold clearances.
+            </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {queue.map((item) => (
-            <Card key={item.id} className="card-elevated transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-0.5 border-l-4 border-l-amber-400">
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                  {/* Selfie thumbnail */}
-                  {item.selfieData && (
-                    <div className="flex-shrink-0">
+            <Card
+              key={item.id}
+              className="card-elevated border border-amber-200 dark:border-amber-900/50 bg-gradient-to-br from-amber-50/20 via-background to-background overflow-hidden"
+            >
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-start gap-3.5">
+                  {/* Selfie thumbnail with inspect overlay */}
+                  <div
+                    onClick={() => setInspectItem(item)}
+                    className="relative cursor-pointer group flex-shrink-0 size-20 rounded-xl overflow-hidden border border-amber-300 dark:border-amber-700/60 shadow-sm bg-muted"
+                  >
+                    {item.selfieData ? (
                       <img
                         src={item.selfieData}
-                        alt="Student selfie"
-                        className="w-14 h-14 rounded-lg object-cover border ring-2 ring-blue-100 dark:ring-blue-900/30"
+                        alt={item.studentName}
+                        className="size-full object-cover group-hover:scale-105 transition-transform duration-200"
                       />
+                    ) : (
+                      <div className="size-full flex items-center justify-center text-muted-foreground text-xs font-mono">
+                        No Photo
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                      <Eye className="h-4 w-4" />
                     </div>
-                  )}
+                  </div>
 
-                  {/* Info */}
+                  {/* Student details */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold">{item.studentName}</span>
-                      <Badge variant="outline" className="text-xs bg-blue-50/50 dark:bg-blue-950/20">{item.matricNumber}</Badge>
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <h4 className="font-bold text-sm truncate">{item.studentName}</h4>
+                      <Badge variant="outline" className="text-[10px] font-mono border-amber-300 dark:border-amber-700 bg-amber-500/10 text-amber-700 dark:text-amber-300 shrink-0">
+                        {item.similarityScore !== null ? `${item.similarityScore.toFixed(1)}%` : 'Borderline'}
+                      </Badge>
                     </div>
-                    <div className="text-sm text-muted-foreground space-y-0.5">
-                      <p>{item.departmentName}</p>
-                      <p>{item.sessionTitle} &middot; {item.courseName}</p>
-                      <p>
-                        {item.checkInTime ? format(new Date(item.checkInTime), 'PPp') : 'No time'}
-                        {item.similarityScore !== null && (
-                          <span className="ml-2 font-medium text-amber-600">
-                            Similarity: {item.similarityScore.toFixed(1)}%
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      size="sm"
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={() => handleAction(item.id, 'approve')}
-                      disabled={actioning === item.id}
-                    >
-                      {actioning === item.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                      )}
-                      Approve
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleAction(item.id, 'reject')}
-                      disabled={actioning === item.id}
-                    >
-                      {actioning === item.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <XCircle className="mr-1 h-3.5 w-3.5" />
-                      )}
-                      Reject
-                    </Button>
+                    <p className="text-xs font-mono text-muted-foreground">{item.matricNumber}</p>
+                    <p className="text-xs text-muted-foreground truncate">{item.departmentName}</p>
+
+                    <div className="mt-2 text-[11px] text-muted-foreground flex items-center gap-2">
+                      <span className="truncate">{item.courseName}</span>
+                      <span>&bull;</span>
+                      <span className="shrink-0">{item.checkInTime ? format(new Date(item.checkInTime), 'HH:mm:ss') : '—'}</span>
+                    </div>
                   </div>
+                </div>
+
+                {/* Similarity meter */}
+                <div className="space-y-1 bg-amber-500/5 p-2 rounded-lg border border-amber-500/10">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground font-medium">Landmark Mesh Similarity</span>
+                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+                      {item.similarityScore !== null ? `${item.similarityScore.toFixed(1)}%` : '—'}
+                    </span>
+                  </div>
+                  <Progress
+                    value={item.similarityScore !== null ? Math.min(100, item.similarityScore * 2) : 50}
+                    className="h-1.5 bg-amber-200/50 dark:bg-amber-950"
+                  />
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setInspectItem(item)}
+                    className="text-xs h-8 gap-1"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Inspect
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 flex-1 gap-1"
+                    onClick={() => handleAction(item.id, 'approve')}
+                    disabled={actioning === item.id}
+                  >
+                    {actioning === item.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    )}
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="text-xs h-8 flex-1 gap-1"
+                    onClick={() => handleAction(item.id, 'reject')}
+                    disabled={actioning === item.id}
+                  >
+                    {actioning === item.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <XCircle className="h-3.5 w-3.5" />
+                    )}
+                    Reject
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      {/* High-res Biometric Inspection Dialog */}
+      <Dialog open={!!inspectItem} onOpenChange={(open) => !open && setInspectItem(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <Eye className="h-4 w-4 text-indigo-500" />
+              Biometric Check-in Inspection
+            </DialogTitle>
+          </DialogHeader>
+
+          {inspectItem && (
+            <div className="space-y-4">
+              <div className="relative aspect-square max-h-72 w-full rounded-xl overflow-hidden border border-border bg-slate-900 flex items-center justify-center shadow-inner">
+                {inspectItem.selfieData ? (
+                  <img
+                    src={inspectItem.selfieData}
+                    alt={inspectItem.studentName}
+                    className="size-full object-contain"
+                  />
+                ) : (
+                  <p className="text-sm text-slate-400">No captured selfie</p>
+                )}
+                <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full text-xs font-mono text-white border border-white/20">
+                  {inspectItem.similarityScore !== null ? `${inspectItem.similarityScore.toFixed(1)}% Match` : 'Borderline'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 rounded-lg bg-muted/60">
+                  <span className="text-muted-foreground block">Student Name</span>
+                  <span className="font-semibold text-foreground">{inspectItem.studentName}</span>
+                </div>
+                <div className="p-2 rounded-lg bg-muted/60">
+                  <span className="text-muted-foreground block">Matriculation</span>
+                  <span className="font-mono font-semibold text-foreground">{inspectItem.matricNumber}</span>
+                </div>
+                <div className="p-2 rounded-lg bg-muted/60">
+                  <span className="text-muted-foreground block">Course</span>
+                  <span className="font-semibold text-foreground truncate block">{inspectItem.courseName}</span>
+                </div>
+                <div className="p-2 rounded-lg bg-muted/60">
+                  <span className="text-muted-foreground block">Timestamp</span>
+                  <span className="font-semibold text-foreground">
+                    {inspectItem.checkInTime ? format(new Date(inspectItem.checkInTime), 'PPp') : '—'}
+                  </span>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleAction(inspectItem.id, 'reject')}
+                  disabled={actioning === inspectItem.id}
+                  className="w-full sm:w-auto"
+                >
+                  <XCircle className="mr-1.5 h-4 w-4" /> Reject Attendance
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white w-full sm:w-auto"
+                  onClick={() => handleAction(inspectItem.id, 'approve')}
+                  disabled={actioning === inspectItem.id}
+                >
+                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Approve Attendance
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

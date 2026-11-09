@@ -5,7 +5,14 @@ import { createSessionToken, getCookieOptions, getSessionCookieName } from '@/li
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, role, matricNumber } = await request.json();
+    let { email, password, role, matricNumber, identifier } = await request.json();
+    if (!email && !matricNumber && identifier) {
+      if (typeof identifier === 'string' && identifier.includes('@')) {
+        email = identifier.trim();
+      } else if (typeof identifier === 'string') {
+        matricNumber = identifier.trim().toUpperCase();
+      }
+    }
 
     if (!password || !role) {
       return NextResponse.json(

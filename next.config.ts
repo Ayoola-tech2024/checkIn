@@ -5,7 +5,9 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  reactStrictMode: false,
+  experimental: {
+    turbopackUseSystemTlsCerts: true,
+  },
   allowedDevOrigins: [
     "http://21.0.11.32:81",
     "http://21.0.11.32:3000",
