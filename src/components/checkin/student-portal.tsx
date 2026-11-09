@@ -113,7 +113,7 @@ export function StudentPortal() {
 function ActivationFlow() {
   const { user, updateUser, logout } = useAuthStore();
   const [step, setStep] = useState<ActivationStep>('email');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(user?.email || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [faceData, setFaceData] = useState<{ selfieData: string; facialDescriptor: number[] } | null>(null);
