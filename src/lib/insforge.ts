@@ -6,8 +6,15 @@
 // so it is never inlined into the browser bundle. Only API route
 // handlers (server-side) import this module.
 
-const INSFORGE_URL = process.env.INSFORGE_URL || 'https://9djdhppd.us-east.insforge.app';
-const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY || '';
+const INSFORGE_URL = process.env.INSFORGE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://tvpmwyngrycvrebcztdt.supabase.co';
+const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+
+function getBaseTableUrl(baseUrl: string, table: string): string {
+  if (baseUrl.includes('supabase.co')) {
+    return `${baseUrl}/rest/v1/${table}`;
+  }
+  return `${baseUrl}/api/database/records/${table}`;
+}
 
 // PostgREST-compatible fetch wrapper for InsForge
 class InsForgeClient {
@@ -169,7 +176,7 @@ class InsForgeQueryBuilder {
   }
 
   private buildUrl(): string {
-    let url = `${this.baseUrl}/api/database/records/${this.table}`;
+    let url = getBaseTableUrl(this.baseUrl, this.table);
     const params = [...this.queryParts];
     if (this.orderField) {
       params.push(`order=${this.orderField}.${this.orderAsc ? 'asc' : 'desc'}`);
@@ -303,7 +310,7 @@ class InsForgeMutationBuilder {
       if (!this.apiKey) {
         return { data: null, error: new Error('INSFORGE_API_KEY environment variable is required (server-side).') };
       }
-      let url = `${this.baseUrl}/api/database/records/${this.table}`;
+      let url = getBaseTableUrl(this.baseUrl, this.table);
       const isUpsert = this.method === 'UPSERT';
 
       let method: string;
