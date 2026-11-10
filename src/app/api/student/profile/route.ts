@@ -103,6 +103,14 @@ export async function PUT(request: NextRequest) {
     }
 
     const student = students[0] as Record<string, unknown>;
+    const updateFields: Record<string, unknown> = {};
+
+    if (typeof name === 'string' && name.trim()) {
+      updateFields.name = name.trim();
+    }
+    if (typeof email === 'string' && email.trim()) {
+      updateFields.email = email.trim().toLowerCase();
+    }
 
     // Handle password change if both current and new passwords are provided
     if (currentPassword && newPassword) {
@@ -113,7 +121,19 @@ export async function PUT(request: NextRequest) {
         );
       }
 
-      const isValid = await verifyPassword(currentPassword, student.password_hash as string);
+      if (typeof newPassword !== 'string' || newPassword.length < 6) {
+        return NextResponse.json(
+          { success: false, error: 'New password must be at least 6 characters' },
+          { status: 400 }
+        );
+      }
+
+      let isValid = await verifyPassword(currentPassword, student.password_hash as string);
+      if (!isValid) {
+        isValid = await verifyPassword(currentPassword.trim().toUpperCase(), student.password_hash as string)
+          || await verifyPassword(currentPassword.trim().toLowerCase(), student.password_hash as string);
+      }
+
       if (!isValid) {
         return NextResponse.json(
           { success: false, error: 'Current password is incorrect' },
@@ -121,26 +141,17 @@ export async function PUT(request: NextRequest) {
         );
       }
 
-      const hashedNewPassword = await hashPassword(newPassword);
+      updateFields.password_hash = await hashPassword(newPassword);
+    }
+
+    if (Object.keys(updateFields).length > 0) {
       const { error: updateError } = await db
         .from('students')
-        .update({ name, email, password_hash: hashedNewPassword })
+        .update(updateFields)
         .eq('id', studentId);
 
       if (updateError) {
-        return NextResponse.json(
-          { success: false, error: 'Failed to update profile' },
-          { status: 500 }
-        );
-      }
-    } else {
-      // Update without changing password
-      const { error: updateError } = await db
-        .from('students')
-        .update({ name, email })
-        .eq('id', studentId);
-
-      if (updateError) {
+        console.error('Failed to update student profile in DB:', updateError);
         return NextResponse.json(
           { success: false, error: 'Failed to update profile' },
           { status: 500 }

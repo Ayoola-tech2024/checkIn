@@ -111,6 +111,7 @@ function getRoleColor(role: string): string {
     case 'admin':
       return 'bg-rose-500/20 text-rose-600 dark:text-rose-400';
     case 'lecturer':
+    case 'hod':
       return 'bg-sky-500/20 text-sky-600 dark:text-sky-400';
     case 'student':
       return 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400';
@@ -124,6 +125,7 @@ function getAvatarBg(role: string): string {
     case 'admin':
       return 'bg-rose-500 text-white';
     case 'lecturer':
+    case 'hod':
       return 'bg-sky-500 text-white';
     case 'student':
       return 'bg-emerald-500 text-white';
@@ -137,6 +139,7 @@ function getRoleIcon(role: string) {
     case 'admin':
       return <Shield className="size-3.5" />;
     case 'lecturer':
+    case 'hod':
       return <BookOpen className="size-3.5" />;
     case 'student':
       return <GraduationCap className="size-3.5" />;
@@ -146,6 +149,7 @@ function getRoleIcon(role: string) {
 }
 
 function getRoleLabel(role: string): string {
+  if (role === 'hod') return 'Head of Department';
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
@@ -154,6 +158,7 @@ function getApiBase(role: string): string {
     case 'admin':
       return '/api/admin/profile';
     case 'lecturer':
+    case 'hod':
       return '/api/lecturer/profile';
     case 'student':
       return '/api/student/profile';
@@ -222,9 +227,9 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
         // Set SLIT-specific fields
         if (role === 'student') {
           const studentProfile = profile as StudentProfileData;
-          setEditLevel(String(studentProfile.level ?? 100));
+          setEditLevel(String(studentProfile.level ?? 200));
         }
-        if (role === 'lecturer') {
+        if (role === 'lecturer' || role === 'hod') {
           const lecturerProfile = profile as LecturerProfileData;
           setEditDepartmentCode(lecturerProfile.departmentId ?? 'none');
         }
@@ -297,7 +302,7 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
       if (role === 'student') {
         payload.level = parseInt(editLevel, 10);
       }
-      if (role === 'lecturer') {
+      if (role === 'lecturer' || role === 'hod') {
         payload.departmentId = editDepartmentCode === 'none' ? null : editDepartmentCode;
       }
 
@@ -318,7 +323,7 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
         toast.success('Profile updated successfully');
         const updates: Record<string, unknown> = { name: editName.trim(), email: editEmail.trim() };
         if (role === 'student') updates.level = parseInt(editLevel, 10);
-        if (role === 'lecturer') updates.departmentId = editDepartmentCode === 'none' ? null : editDepartmentCode;
+        if (role === 'lecturer' || role === 'hod') updates.departmentId = editDepartmentCode === 'none' ? null : editDepartmentCode;
         updateUser(updates);
         // Refresh profile
         fetchProfile();
