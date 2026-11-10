@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
         schoolId: student.school_id,
         schoolName,
         schoolCode,
-        level: typeof student.level === 'number' ? student.level : (typeof student.level === 'string' ? parseInt(student.level as string, 10) || 100 : 100),
+        level: typeof student.level === 'number' ? student.level : (typeof student.level === 'string' ? parseInt(student.level as string, 10) || 200 : 200),
         activated: true,
       },
     });

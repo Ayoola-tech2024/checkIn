@@ -679,7 +679,7 @@ function ActivePortal() {
             <p><strong>Department:</strong> ${user.departmentName || 'SLIT'}</p>
           </div>
           <div>
-            <p><strong>Academic Level:</strong> ${user.level || 100} Level</p>
+            <p><strong>Academic Level:</strong> ${user.level || 200} Level</p>
             <p><strong>3D Biometric Status:</strong> VERIFIED (Activated)</p>
             <p><strong>Date Issued:</strong> ${new Date().toLocaleDateString()}</p>
           </div>
@@ -773,7 +773,7 @@ function ActivePortal() {
               <h1 className="text-sm font-bold tracking-tight text-foreground truncate flex items-center gap-2">
                 {user?.name}
                 <Badge variant="outline" className="text-[10px] border-indigo-500/30 text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 font-mono">
-                  {user?.level ?? 100}L
+                  {user?.level ?? 200}L
                 </Badge>
               </h1>
               <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5 font-mono">

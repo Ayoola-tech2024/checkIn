@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         schoolId: student.school_id as string | undefined,
         schoolName,
         schoolCode,
-        level: typeof student.level === 'number' ? student.level : (typeof student.level === 'string' ? parseInt(student.level as string, 10) || 100 : 100),
+        level: typeof student.level === 'number' ? student.level : (typeof student.level === 'string' ? parseInt(student.level as string, 10) || 200 : 200),
         activated: Boolean(student.activated),
       };
 

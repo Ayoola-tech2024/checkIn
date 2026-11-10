@@ -144,7 +144,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
   const [title, setTitle] = useState('');
   const [courseId, setCourseId] = useState('');
   const [venueId, setVenueId] = useState('');
-  const [level, setLevel] = useState<string>('100');
+  const [level, setLevel] = useState<string>('200');
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
   const [distanceThreshold, setDistanceThreshold] = useState(DEFAULT_DISTANCE_THRESHOLD);
   const [durationMinutes, setDurationMinutes] = useState(DEFAULT_SESSION_DURATION);
@@ -174,7 +174,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
     setTitle('');
     setCourseId('');
     setVenueId('');
-    setLevel('100');
+    setLevel('200');
     setSelectedDepts([]);
     setDistanceThreshold(DEFAULT_DISTANCE_THRESHOLD);
     setDurationMinutes(DEFAULT_SESSION_DURATION);
@@ -279,7 +279,7 @@ function CreateSessionDialog({ open, onOpenChange, lecturerId, courses, onCreate
                   setCourseId(val);
                   setSelectedDepts([]);
                   const course = courses.find((c) => c.id === val);
-                  if (course) setLevel(String(course.level ?? 100));
+                  if (course) setLevel(String(course.level ?? 200));
                 }}
               >
                 <option value="">Select course</option>
@@ -1136,7 +1136,7 @@ export function LecturerPortal() {
 
       const now = new Date();
       const title = `${course.code} Quick Session (${format(now, 'MMM d, h:mm a')})`;
-      const level = course.level ?? 100;
+      const level = course.level ?? 200;
 
       const createRes = await fetch('/api/lecturer/sessions', {
         method: 'POST',
