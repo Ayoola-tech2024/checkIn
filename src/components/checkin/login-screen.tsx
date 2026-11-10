@@ -40,7 +40,7 @@ const ROLE_OPTIONS: RoleOption[] = [
     label: 'Student',
     badge: 'Undergraduate',
     icon: <GraduationCap className="size-4" />,
-    hint: 'Enter your FUTA matric number or student email',
+    hint: 'Enter your FUTA Matric Number (or personal email if already activated)',
   },
   {
     role: 'lecturer',
@@ -271,12 +271,12 @@ export function LoginScreen() {
                 {/* Identifier Input */}
                 <div className="space-y-1.5">
                   <Label htmlFor="identifier" className="text-xs font-medium">
-                    {selectedRole === 'student' ? 'Matric Number or Email' : 'Institutional Email'}
+                    {selectedRole === 'student' ? 'FUTA Matric Number (or Personal Email)' : 'Institutional Email'}
                   </Label>
                   <Input
                     id="identifier"
                     type="text"
-                    placeholder={selectedRole === 'student' ? 'e.g. BIT/25/9975' : 'e.g. name@futa.edu.ng'}
+                    placeholder={selectedRole === 'student' ? 'e.g. BIT/25/9945' : 'e.g. name@futa.edu.ng'}
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
                     required
@@ -284,7 +284,7 @@ export function LoginScreen() {
                   />
                   {selectedRole === 'student' && (
                     <p className="text-[11px] text-[var(--muted-foreground)]">
-                      Default student password is your <strong>SURNAME</strong> in uppercase.
+                      First time signing in? Use your <strong>Matric Number</strong> and your <strong>SURNAME</strong> in capital letters as password.
                     </p>
                   )}
                 </div>

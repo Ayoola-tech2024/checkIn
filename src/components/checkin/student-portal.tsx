@@ -218,6 +218,7 @@ function ActivationFlow() {
         const result: ApiResponse = await response.json();
 
         if (result.success && result.data) {
+          setErrors({});
           setStep('complete');
           updateUser({
             activated: true,
@@ -225,12 +226,16 @@ function ActivationFlow() {
           });
           toast.success('Account activated successfully!');
         } else {
-          toast.error(result.error || 'Activation failed');
+          const errMsg = result.error || 'Activation failed';
+          toast.error(errMsg);
+          setErrors({ selfie: errMsg });
           setStep('selfie');
           setFaceData(null);
         }
       } catch {
-        toast.error('Network error. Please try again.');
+        const netMsg = 'Network error. Please check your internet connection and try again.';
+        toast.error(netMsg);
+        setErrors({ selfie: netMsg });
         setStep('selfie');
         setFaceData(null);
       } finally {
@@ -310,13 +315,16 @@ function ActivationFlow() {
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Mail className="h-5 w-5 text-primary" />
-                Link Your Email
+                Link Your Personal Email
               </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Use your regular personal email (Gmail, Yahoo, Outlook, etc.). You do <strong>not</strong> need a FUTA school email.
+              </p>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleEmailSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email Address</Label>
+                  <Label htmlFor="email">Personal Email Address</Label>
                   <Input
                     id="email"
                     type="email"
@@ -370,6 +378,18 @@ function ActivationFlow() {
         {/* Step 2: Selfie Capture */}
         {step === 'selfie' && (
           <div className="space-y-4">
+            {errors.selfie && (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs text-red-600 dark:text-red-400 font-medium flex items-start justify-between gap-2">
+                <span>{errors.selfie}</span>
+                <button
+                  type="button"
+                  onClick={() => setErrors({})}
+                  className="text-red-500 hover:opacity-80 shrink-0 font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <Card className="card-elevated border-0 shadow-sm">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -380,7 +400,7 @@ function ActivationFlow() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => { setStep('email'); setFaceData(null); }}
+                    onClick={() => { setStep('email'); setFaceData(null); setErrors({}); }}
                     className="gap-1.5 text-muted-foreground"
                   >
                     <ArrowLeft className="h-4 w-4" />

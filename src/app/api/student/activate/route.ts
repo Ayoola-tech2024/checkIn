@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
           const otherDescriptor = (parsedOther?.descriptor ?? parsedOther) as number[];
           if (Array.isArray(otherDescriptor) && otherDescriptor.length > 0) {
             const similarity = calculateSimilarity(candidateDescriptor, otherDescriptor);
-            if (similarity >= 50.0) {
+            if (similarity >= 65.0) {
               return NextResponse.json(
                 {
                   success: false,
