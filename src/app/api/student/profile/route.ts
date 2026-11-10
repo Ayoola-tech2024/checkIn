@@ -105,9 +105,8 @@ export async function PUT(request: NextRequest) {
     const student = students[0] as Record<string, unknown>;
     const updateFields: Record<string, unknown> = {};
 
-    if (typeof name === 'string' && name.trim()) {
-      updateFields.name = name.trim();
-    }
+    // SECURITY: Students are ONLY permitted to update their email and password.
+    // Name, matric number, level, department, and school are official academic records.
     if (typeof email === 'string' && email.trim()) {
       updateFields.email = email.trim().toLowerCase();
     }

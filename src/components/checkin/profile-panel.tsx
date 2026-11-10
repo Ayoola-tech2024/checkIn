@@ -265,7 +265,7 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
     if (!user?.id) return;
 
     // Validate
-    if (!editName.trim()) {
+    if (role !== 'student' && !editName.trim()) {
       toast.error('Name cannot be empty');
       return;
     }
@@ -294,14 +294,15 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
     try {
       const payload: Record<string, unknown> = {
         id: user.id,
-        name: editName.trim(),
         email: editEmail.trim(),
       };
 
-      // Include SLIT-specific fields
-      if (role === 'student') {
-        payload.level = parseInt(editLevel, 10);
+      // Only staff can update their display name
+      if (role !== 'student') {
+        payload.name = editName.trim();
       }
+
+      // Include SLIT-specific fields for staff
       if (role === 'lecturer' || role === 'hod') {
         payload.departmentId = editDepartmentCode === 'none' ? null : editDepartmentCode;
       }
@@ -321,8 +322,8 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
 
       if (data.success) {
         toast.success('Profile updated successfully');
-        const updates: Record<string, unknown> = { name: editName.trim(), email: editEmail.trim() };
-        if (role === 'student') updates.level = parseInt(editLevel, 10);
+        const updates: Record<string, unknown> = { email: editEmail.trim() };
+        if (role !== 'student') updates.name = editName.trim();
         if (role === 'lecturer' || role === 'hod') updates.departmentId = editDepartmentCode === 'none' ? null : editDepartmentCode;
         updateUser(updates);
         // Refresh profile
@@ -544,24 +545,54 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Name */}
-              <div className="space-y-2">
-                <Label htmlFor="profile-name" className="text-sm">
-                  Name
-                </Label>
-                <Input
-                  id="profile-name"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Your name"
-                  aria-label="Edit name"
-                />
-              </div>
+              {role === 'student' ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="profile-name" className="text-sm font-medium">
+                      Official Name
+                    </Label>
+                    <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded border">
+                      Academic Record
+                    </span>
+                  </div>
+                  <Input
+                    id="profile-name"
+                    value={editName}
+                    disabled
+                    className="bg-muted/50 cursor-not-allowed text-muted-foreground font-medium"
+                    aria-label="Student name (read-only)"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Student names are synchronized with university records and cannot be altered.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="profile-name" className="text-sm">
+                    Name
+                  </Label>
+                  <Input
+                    id="profile-name"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Your name"
+                    aria-label="Edit name"
+                  />
+                </div>
+              )}
 
               {/* Email */}
               <div className="space-y-2">
-                <Label htmlFor="profile-email" className="text-sm">
-                  Email
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="profile-email" className="text-sm">
+                    Email Address
+                  </Label>
+                  {role === 'student' && (
+                    <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                      Editable
+                    </span>
+                  )}
+                </div>
                 <Input
                   id="profile-email"
                   type="email"
@@ -583,22 +614,21 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
                 </div>
               </div>
 
-              {/* Student: Level dropdown */}
+              {/* Student: Level (read-only academic badge) */}
               {role === 'student' && (
-                <div className="space-y-2">
-                  <Label htmlFor="profile-level" className="text-sm">Level</Label>
-                  <Select value={editLevel} onValueChange={setEditLevel}>
-                    <SelectTrigger id="profile-level" className="w-full">
-                      <SelectValue placeholder="Select level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {VALID_LEVELS.map((l) => (
-                        <SelectItem key={String(l)} value={String(l)}>
-                          {l} Level
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm">Academic Level</Label>
+                    <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded border">
+                      Academic Record
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 border">
+                      {editLevel || '200'} Level
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">Admin/Department managed</span>
+                  </div>
                 </div>
               )}
 
@@ -702,7 +732,7 @@ export function ProfilePanel({ open, onOpenChange }: ProfilePanelProps) {
               {/* Save Button */}
               <Button
                 onClick={handleSave}
-                disabled={saving || !editName.trim() || !editEmail.trim()}
+                disabled={saving || !editEmail.trim() || (role !== 'student' && !editName.trim())}
                 className="w-full shadow-sm hover:shadow-md transition-shadow"
                 aria-label="Save profile changes"
               >
