@@ -164,10 +164,15 @@ if (!isWithinNigeria(parsedStudentLat, parsedStudentLng)) {
     };
 
     let venuePos: { lat: number | null; lng: number | null } | null = null;
+    let isOnlineSession = false;
     if (session.venue_id) {
-      const { data: venues } = await db.from('venues').select('latitude, longitude').eq('id', session.venue_id as string);
+      const { data: venues } = await db.from('venues').select('name, latitude, longitude').eq('id', session.venue_id as string);
       if (venues && venues.length > 0) {
         const v = venues[0] as Record<string, unknown>;
+        const vName = typeof v.name === 'string' ? v.name.toLowerCase() : '';
+        if (vName.includes('online') || vName.includes('teams') || vName.includes('virtual')) {
+          isOnlineSession = true;
+        }
         venuePos = {
           lat: typeof v.latitude === 'number' ? v.latitude : parseFloat(String(v.latitude ?? 'NaN')),
           lng: typeof v.longitude === 'number' ? v.longitude : parseFloat(String(v.longitude ?? 'NaN')),
@@ -188,9 +193,9 @@ if (!isWithinNigeria(parsedStudentLat, parsedStudentLng)) {
       (session.distance_threshold as number) || 50
     );
 
-    const distance = geoCheck.bestDistance;
+    const distance = isOnlineSession ? 0 : geoCheck.bestDistance;
 
-    if (!geoCheck.within) {
+    if (!geoCheck.within && !isOnlineSession) {
       // Location check failed - record as rejected_location
       const now = new Date().toISOString();
       const attendanceData = {

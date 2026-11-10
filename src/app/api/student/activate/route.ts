@@ -3,6 +3,7 @@ import { db } from '@/lib/insforge';
 import { hashPassword } from '@/lib/auth';
 import { getAuthUser } from '@/lib/auth-context';
 import { validateDescriptor, calculateSimilarity } from '@/lib/face-utils';
+import { BIOMETRIC_DEDUPLICATION_THRESHOLD } from '@/lib/constants';
 
 export async function POST(request: NextRequest) {
   try {
@@ -153,7 +154,7 @@ export async function POST(request: NextRequest) {
           const otherDescriptor = (parsedOther?.descriptor ?? parsedOther) as number[];
           if (Array.isArray(otherDescriptor) && otherDescriptor.length > 0) {
             const similarity = calculateSimilarity(candidateDescriptor, otherDescriptor);
-            if (similarity >= 65.0) {
+            if (similarity >= BIOMETRIC_DEDUPLICATION_THRESHOLD) {
               return NextResponse.json(
                 {
                   success: false,
