@@ -240,8 +240,9 @@ const scheduledDate = new Date(scheduledAt);
       .select('*')
       .eq('venue_id', venueId);
 
-    // Filter for actual time overlap with scheduled or active sessions
-    const venueConflicts = ((venueSessions || []) as Record<string, unknown>[]).filter((s: Record<string, unknown>) => {
+    // Filter for actual time overlap with scheduled or active sessions (skip for virtual / online rooms)
+    const isVirtualVenue = venueId === 'b5b5b5b5-5555-4444-8888-555555555555';
+    const venueConflicts = isVirtualVenue ? [] : ((venueSessions || []) as Record<string, unknown>[]).filter((s: Record<string, unknown>) => {
       if (s.status !== 'scheduled' && s.status !== 'active') return false;
       const existingStart = new Date(s.scheduled_at as string);
       const existingEnd = new Date(existingStart.getTime() + (s.duration_minutes as number) * 60000);

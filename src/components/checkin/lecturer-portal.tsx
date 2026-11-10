@@ -29,6 +29,9 @@ import {
   ClipboardList,
   TrendingUp,
   Zap,
+  FileSpreadsheet,
+  Upload,
+  FileCheck,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -551,6 +554,239 @@ function LiveMonitor({ session }: LiveMonitorProps) {
 }
 
 // ============================================================
+// Microsoft Teams CSV Import Dialog
+// ============================================================
+interface ImportTeamsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  session: SessionInfo;
+  onImportSuccess: () => void;
+}
+
+function ImportTeamsDialog({ open, onOpenChange, session, onImportSuccess }: ImportTeamsDialogProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [csvContent, setCsvContent] = useState<string>('');
+  const [minDuration, setMinDuration] = useState<number>(10);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<{
+    totalParsed: number;
+    importedCount: number;
+    updatedCount: number;
+    totalVerified: number;
+    belowThresholdCount: number;
+    unmatchedCount: number;
+    matchedStudents: Array<{ matricNumber: string; name: string; duration: number }>;
+    belowThreshold: Array<{ name: string; email: string; duration: number }>;
+    unmatched: string[];
+  } | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    setResult(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setCsvContent((event.target?.result as string) || '');
+    };
+    reader.readAsText(f);
+  };
+
+  const handleImport = async () => {
+    if (!csvContent) {
+      toast.error('Please choose a Microsoft Teams attendance report CSV first.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await fetch('/api/lecturer/import-teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: session.id,
+          csvData: csvContent,
+          minDuration,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setResult(json.data);
+        toast.success(`Successfully verified ${json.data.totalVerified} students from Teams!`);
+        onImportSuccess();
+      } else {
+        toast.error(json.error || 'Failed to parse Teams CSV report.');
+      }
+    } catch {
+      toast.error('Network error uploading Teams report');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setFile(null);
+    setCsvContent('');
+    setResult(null);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) handleReset(); }}>
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto custom-scrollbar">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-lg">
+            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <FileSpreadsheet className="h-5 w-5" />
+            </div>
+            <span>Import Teams Attendance</span>
+          </DialogTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Upload the attendance CSV downloaded from Microsoft Teams for <strong className="text-foreground">{session.title}</strong> ({session.courseCode}).
+          </p>
+        </DialogHeader>
+
+        {!result ? (
+          <div className="space-y-4 py-2">
+            {/* Minimum duration threshold */}
+            <div className="space-y-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/40 border text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-foreground">Minimum In-Meeting Duration:</span>
+                <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{minDuration} minutes</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Students who joined for less than {minDuration} minutes will be excluded from automatic present clearance.
+              </p>
+              <div className="pt-2">
+                <Slider
+                  value={[minDuration]}
+                  min={0}
+                  max={Math.max(session.durationMinutes, 60)}
+                  step={5}
+                  onValueChange={(vals) => setMinDuration(vals[0])}
+                />
+              </div>
+            </div>
+
+            {/* File Upload Box */}
+            <div className="border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center hover:border-blue-500/50 transition-colors bg-slate-50/50 dark:bg-slate-900/20">
+              <input
+                id="teams-csv-input"
+                type="file"
+                accept=".csv,.txt,.tsv"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <label htmlFor="teams-csv-input" className="cursor-pointer flex flex-col items-center gap-2">
+                <div className="size-12 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Upload className="size-6" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {file ? file.name : 'Choose Teams Attendance CSV'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {file ? `${(file.size / 1024).toFixed(1)} KB ready to import` : 'Click to browse or drop your MeetingAttendanceReport.csv'}
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="mt-2 text-xs">
+                  {file ? 'Change File' : 'Browse Files'}
+                </Button>
+              </label>
+            </div>
+
+            <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800/40 text-[11px] text-muted-foreground space-y-1">
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                <FileCheck className="size-3.5 text-blue-600 dark:text-blue-400" />
+                Automatic FUTA Matric Mapping
+              </p>
+              <p>
+                `checkIn` will automatically read emails (e.g. <code>@futa.edu.ng</code>) or student names and map them directly to their registered 200L Matric Numbers.
+              </p>
+            </div>
+          </div>
+        ) : (
+          /* Results Summary View */
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 text-center">
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{result.totalVerified}</p>
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground">Verified Present</p>
+              </div>
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-center">
+                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{result.belowThresholdCount}</p>
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground">{`< ${minDuration}m Duration`}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/40 border text-center">
+                <p className="text-2xl font-bold text-foreground">{result.unmatchedCount}</p>
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground">Unmatched/Guests</p>
+              </div>
+            </div>
+
+            {/* Matched Students List */}
+            {result.matchedStudents.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-foreground">Verified Attendees ({result.matchedStudents.length}):</p>
+                <div className="max-h-48 overflow-y-auto border rounded-xl divide-y text-xs custom-scrollbar">
+                  {result.matchedStudents.map((s, idx) => (
+                    <div key={idx} className="p-2.5 flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-foreground">{s.name}</p>
+                        <p className="text-[11px] text-muted-foreground font-mono">{s.matricNumber}</p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
+                        {s.duration > 0 ? `${s.duration} mins` : 'Attended'}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Below Threshold List */}
+            {result.belowThreshold.length > 0 && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1">
+                <p className="font-semibold text-amber-700 dark:text-amber-400">Excluded (Short Duration):</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {result.belowThreshold.map(b => `${b.name} (${b.duration}m)`).join(', ')}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          {!result ? (
+            <>
+              <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+                disabled={!file || uploading}
+                onClick={handleImport}
+              >
+                {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <FileCheck className="size-3.5" />}
+                {uploading ? 'Processing Teams CSV...' : 'Parse & Sync Attendance'}
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => onOpenChange(false)}
+            >
+              Done (View Updated Session)
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
 // Session Card
 // ============================================================
 interface SessionCardProps {
@@ -564,6 +800,9 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [showLiveMonitor, setShowLiveMonitor] = useState(false);
+  const [showTeamsImport, setShowTeamsImport] = useState(false);
+
+  const isOnlineSession = session.venueName?.toLowerCase().includes('online') || session.venueName?.toLowerCase().includes('teams');
 
   const handleStartSession = async () => {
     setStarting(true);
@@ -578,12 +817,20 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
           lecturerLng: pos.longitude,
         };
       } catch {
-        // GPS failed — require real GPS, no venue fallback.
-        toast.error(
-          'GPS location is required to start a session. Please enable location services and try again.'
-        );
-        setStarting(false);
-        return;
+        // If it's an Online/Teams session, use campus anchor coordinates
+        if (isOnlineSession) {
+          body = {
+            sessionId: session.id,
+            lecturerLat: 7.3000,
+            lecturerLng: 5.1300,
+          };
+        } else {
+          toast.error(
+            'GPS location is required to start an in-person session. Please enable location services and try again.'
+          );
+          setStarting(false);
+          return;
+        }
       }
 
       const res = await fetch('/api/lecturer/start-session', {
@@ -743,6 +990,18 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
                 Analytics
               </Button>
             )}
+
+            {/* Import Teams Attendance CSV Button */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20"
+              onClick={() => setShowTeamsImport(true)}
+              title="Import attendance report from Microsoft Teams meeting CSV"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>Import Teams</span>
+            </Button>
           </div>
         </div>
 
@@ -750,6 +1009,14 @@ function SessionCard({ session, onRefresh, onViewAnalytics }: SessionCardProps) 
         {showLiveMonitor && session.status === 'active' && (
           <LiveMonitor session={session} />
         )}
+
+        {/* Teams CSV Import Dialog */}
+        <ImportTeamsDialog
+          open={showTeamsImport}
+          onOpenChange={setShowTeamsImport}
+          session={session}
+          onImportSuccess={onRefresh}
+        />
       </CardContent>
     </Card>
   );
