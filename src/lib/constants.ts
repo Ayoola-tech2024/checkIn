@@ -14,8 +14,8 @@ export const MEDIAPIPE_CDN = MEDIAPIPE_BASE_PATH; // alias kept for backwards-co
 // Attendance thresholds
 export const SIMILARITY_ACCEPT = 50;
 export const SIMILARITY_REVIEW = 40;
-// Registration deduplication threshold (inter-student similarity max is ~61.5%; duplicate faces score >85%)
-export const BIOMETRIC_DEDUPLICATION_THRESHOLD = 75;
+// Registration deduplication threshold (inter-student empirical max is 74.96%; duplicate same-person faces score >88%)
+export const BIOMETRIC_DEDUPLICATION_THRESHOLD = 82;
 
 // Image compression
 export const MAX_SELFIE_SIZE_KB = 150;
