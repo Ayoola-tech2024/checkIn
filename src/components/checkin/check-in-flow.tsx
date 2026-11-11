@@ -25,7 +25,7 @@ import { Separator } from '@/components/ui/separator';
 import { FaceCapture } from '@/components/checkin/face-capture';
 import { saveOfflineCheckIn, syncOfflineCheckIns } from '@/lib/offline-store';
 import { useGeoLocation } from '@/hooks/use-geo-location';
-import { isWithinVenueOrLecturer } from '@/lib/geo';
+import { isWithinVenueOrLecturer, isWithinNigeria } from '@/lib/geo';
 import { queueCheckIn } from '@/lib/offline';
 import type { SessionInfo, CheckInResult, AttendanceStatus } from '@/lib/types';
 import { toast } from 'sonner';
@@ -58,6 +58,11 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
 
   const geo = useGeoLocation();
 
+  const isOnlineSession =
+    session.venueName?.toLowerCase().includes('online') ||
+    session.venueName?.toLowerCase().includes('teams') ||
+    session.venueName?.toLowerCase().includes('virtual');
+
   const validateLocation = useCallback(
     (lat: number, lng: number, accuracy?: number) => {
       const lecturerPos = {
@@ -74,24 +79,30 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
         session.distanceThreshold || 50
       );
 
+      const inNigeria = isWithinNigeria(lat, lng);
+      const passed = isOnlineSession ? inNigeria : geoCheck.within;
+      const message = isOnlineSession
+        ? (inNigeria ? 'Online Session — Location verified within Nigeria' : 'Location must be within Nigeria')
+        : geoCheck.message;
+
       const result: LocationResult = {
-        passed: geoCheck.within,
-        distance: geoCheck.bestDistance,
+        passed,
+        distance: isOnlineSession ? 0 : geoCheck.bestDistance,
         threshold: session.distanceThreshold || 50,
         lat,
         lng,
         accuracy,
-        message: geoCheck.message,
+        message,
       };
 
       setLocationResult(result);
 
-      if (geoCheck.within) {
+      if (passed) {
         // Small delay for visual feedback before moving to biometric step
         setTimeout(() => setStep('biometric'), 1000);
       }
     },
-    [session]
+    [session, isOnlineSession]
   );
 
   // Auto-request GPS on mount
@@ -349,7 +360,7 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
               </div>
               <div className="flex items-center gap-2">
                 <Ruler className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span>Within {session.distanceThreshold}m</span>
+                <span>{isOnlineSession ? 'Online Remote Class' : `Within ${session.distanceThreshold}m`}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -391,20 +402,24 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
                   <>
                     <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-500" />
                     <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                      You are within range
+                      {isOnlineSession ? 'Remote Location Verified' : 'You are within range'}
                     </p>
                     <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-1">
-                      Distance: {locationResult.distance.toFixed(1)}m (within {locationResult.threshold}m)
+                      {isOnlineSession
+                        ? 'GPS confirmed within Nigeria — proceed to face verification'
+                        : `Distance: ${locationResult.distance.toFixed(1)}m (within ${locationResult.threshold}m)`}
                     </p>
                   </>
                 ) : (
                   <>
                     <XCircle className="h-8 w-8 mx-auto mb-2 text-red-500" />
                     <p className="text-sm font-medium text-red-700 dark:text-red-400">
-                      Too far from venue
+                      {isOnlineSession ? 'Location outside Nigeria' : 'Too far from venue'}
                     </p>
                     <p className="text-xs text-red-600 dark:text-red-500 mt-1">
-                      Distance: {locationResult.distance.toFixed(1)}m (required: within {locationResult.threshold}m)
+                      {isOnlineSession
+                        ? 'Check-in is only available within Nigeria'
+                        : `Distance: ${locationResult.distance.toFixed(1)}m (required: within ${locationResult.threshold}m)`}
                     </p>
                     <Button variant="outline" size="sm" className="mt-3" onClick={handleRetryLocation}>
                       Retry GPS
@@ -427,7 +442,11 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
             <CardContent className="p-3">
               <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
                 <MapPin className="h-4 w-4" />
-                <span>Location verified — {locationResult?.distance.toFixed(1)}m from venue</span>
+                <span>
+                  {isOnlineSession
+                    ? 'Online Class — Location verified in Nigeria'
+                    : `Location verified — ${locationResult?.distance.toFixed(1)}m from venue`}
+                </span>
               </div>
             </CardContent>
           </Card>
