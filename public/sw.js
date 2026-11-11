@@ -1,10 +1,14 @@
-// checkIn PWA Service Worker (v3 - Deployment Resilience & WASM Cache)
-const CACHE_NAME = 'checkin-v3';
+// checkIn PWA Service Worker (v4 - WebAPK Icons & WASM Cache)
+const CACHE_NAME = 'checkin-v4';
 const STATIC_ASSETS = [
   '/',
   '/logo.svg',
   '/favicon.ico',
   '/manifest.json',
+  '/icon-192x192.png',
+  '/icon-512x512.png',
+  '/icon-maskable-192x192.png',
+  '/icon-maskable-512x512.png',
   '/wasm/camera_utils.js',
   '/wasm/face_mesh.js',
   '/wasm/face_mesh.binarypb',
