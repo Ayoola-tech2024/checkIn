@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       studentAccuracy,
       facialDescriptor,
       selfieData,
+      offlineTimestamp,
     } = await request.json();
 
     if (!sessionId || studentLat === undefined || studentLng === undefined || !facialDescriptor) {
@@ -102,11 +103,29 @@ if (!isWithinNigeria(parsedStudentLat, parsedStudentLng)) {
 
     const session = sessions[0] as Record<string, unknown>;
 
+    let isOfflineSync = false;
     if (session.status !== 'active') {
-      return NextResponse.json(
-        { success: false, error: `Session is not active. Current status: ${session.status}` },
-        { status: 400 }
-      );
+      // If the session has already ended, check if this is an authentic offline check-in
+      // that was captured while the session was active.
+      if (offlineTimestamp && (session.status === 'completed' || session.status === 'ended')) {
+        const captureTime = new Date(offlineTimestamp).getTime();
+        const sessionStart = new Date((session.created_at || session.scheduled_at) as string).getTime();
+        // Allow sync if capture happened during the session (up to 4 hours grace window for walking back to network)
+        const fourHoursMs = 4 * 60 * 60 * 1000;
+        if (Number.isFinite(captureTime) && captureTime >= (sessionStart - 10 * 60 * 1000) && (captureTime - sessionStart) <= fourHoursMs) {
+          isOfflineSync = true;
+        } else {
+          return NextResponse.json(
+            { success: false, error: 'Offline check-in timestamp is outside the class window.' },
+            { status: 400 }
+          );
+        }
+      } else {
+        return NextResponse.json(
+          { success: false, error: `Session is not active. Current status: ${session.status}` },
+          { status: 400 }
+        );
+      }
     }
 
 // LEVEL GUARD: a session is targeted at a specific academic level
@@ -265,13 +284,14 @@ if (!isWithinNigeria(parsedStudentLat, parsedStudentLng)) {
     const attendanceStatus = result.status;
 
     const now = new Date().toISOString();
+    const effectiveCheckInTime = isOfflineSync && offlineTimestamp ? offlineTimestamp : now;
     const attendanceData = {
       status: attendanceStatus,
       similarity_score: similarityScore,
       student_lat: parsedStudentLat,
       student_lng: parsedStudentLng,
       selfie_data: selfieData || null,
-      check_in_time: now,
+      check_in_time: effectiveCheckInTime,
     };
 
     let attendance: Record<string, unknown>;

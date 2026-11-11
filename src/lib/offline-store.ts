@@ -120,6 +120,7 @@ export async function syncOfflineCheckIns(): Promise<{
           studentAccuracy: item.studentAccuracy,
           facialDescriptor: item.facialDescriptor,
           selfieData: item.selfieData,
+          offlineTimestamp: item.timestamp,
         }),
       });
 

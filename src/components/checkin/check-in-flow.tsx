@@ -135,6 +135,7 @@ export function CheckInFlow({ session, studentId, onComplete, onCancel }: CheckI
         const response = await fetch('/api/student/check-in', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(7000) : undefined,
           body: JSON.stringify({
             studentId,
             sessionId: session.id,
