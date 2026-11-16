@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 function subscribe(callback: () => void): () => void {
   window.addEventListener('online', callback);
@@ -34,10 +34,44 @@ export interface UseOnlineStatusResult {
 }
 
 export function useOnlineStatus(): UseOnlineStatusResult {
-  const isOnline = useSyncExternalStore(
+  const navigatorOnline = useSyncExternalStore(
     subscribe,
     getClientSnapshot,
     getServerSnapshot
   );
-  return { isOnline };
+  const [probeReachable, setProbeReachable] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (navigatorOnline) {
+      setProbeReachable(true);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+
+    fetch('/api', {
+      method: 'HEAD',
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(() => {
+        if (!cancelled) setProbeReachable(true);
+      })
+      .catch(() => {
+        if (!cancelled) setProbeReachable(false);
+      })
+      .finally(() => {
+        clearTimeout(timer);
+      });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [navigatorOnline]);
+
+  return { isOnline: navigatorOnline || probeReachable };
 }

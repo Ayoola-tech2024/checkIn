@@ -44,32 +44,30 @@ export function OfflineBanner() {
 
   return (
     <Alert
-      className="border-amber-300/70 bg-amber-50 text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200 py-2"
+      className="border-amber-300/70 bg-amber-50 text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200 py-2.5 items-center"
     >
-      <div className="flex items-center gap-2 text-sm">
-        {isOnline ? (
-          <CloudUpload className="h-4 w-4 shrink-0" />
-        ) : (
-          <WifiOff className="h-4 w-4 shrink-0" />
+      {isOnline ? (
+        <CloudUpload className="h-4 w-4 shrink-0" />
+      ) : (
+        <WifiOff className="h-4 w-4 shrink-0" />
+      )}
+      <AlertDescription className="text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
+        {!isOnline && pendingCount === 0 && (
+          <>You are offline. Check-ins will be queued and synced when you reconnect.</>
         )}
-        <AlertDescription className="text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
-          {!isOnline && pendingCount === 0 && (
-            <>You are offline. Check-ins will be queued and synced when you reconnect.</>
-          )}
-          {!isOnline && pendingCount > 0 && (
-            <>
-              You are offline. Check-ins will be queued and synced when you reconnect.{' '}
-              <span className="font-medium">{pendingCount} check-in(s) pending sync.</span>
-            </>
-          )}
-          {isOnline && pendingCount > 0 && (
-            <>
-              <span className="font-medium">{pendingCount} check-in(s) pending sync.</span>{' '}
-              They will be submitted automatically.
-            </>
-          )}
-        </AlertDescription>
-      </div>
+        {!isOnline && pendingCount > 0 && (
+          <>
+            You are offline. Check-ins will be queued and synced when you reconnect.{' '}
+            <span className="font-medium">{pendingCount} check-in(s) pending sync.</span>
+          </>
+        )}
+        {isOnline && pendingCount > 0 && (
+          <>
+            <span className="font-medium">{pendingCount} check-in(s) pending sync.</span>{' '}
+            They will be submitted automatically.
+          </>
+        )}
+      </AlertDescription>
     </Alert>
   );
 }
