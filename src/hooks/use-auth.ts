@@ -49,8 +49,11 @@ export const useAuthStore = create<AuthState>()(
       setHydrated: (val: boolean) => set({ hydrated: val }),
       validateSession: async () => {
         set({ validating: true });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
         try {
-          const res = await fetch('/api/auth/me');
+          const res = await fetch('/api/auth/me', { signal: controller.signal });
+          clearTimeout(timeoutId);
           if (res.ok) {
             const json = await res.json();
             if (json.success && json.data) {
@@ -58,10 +61,28 @@ export const useAuthStore = create<AuthState>()(
               return true;
             }
           }
-          // Session invalid — clear local state
+          // Server explicitly rejected the session (e.g. 401/403) — clear local state
+          if (res.status === 401 || res.status === 403) {
+            set({ user: null, isAuthenticated: false, validating: false });
+            return false;
+          }
+          // Transient 5xx server error — keep cached user if available
+          const cached = get();
+          if (cached.user && cached.isAuthenticated) {
+            set({ validating: false });
+            return true;
+          }
           set({ user: null, isAuthenticated: false, validating: false });
           return false;
         } catch {
+          clearTimeout(timeoutId);
+          // Offline or slow-network timeout — preserve persisted session so student
+          // can open the dashboard and queue offline check-ins without being logged out.
+          const cached = get();
+          if (cached.user && cached.isAuthenticated) {
+            set({ validating: false });
+            return true;
+          }
           set({ user: null, isAuthenticated: false, validating: false });
           return false;
         }

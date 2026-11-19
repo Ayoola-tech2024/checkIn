@@ -1,5 +1,6 @@
-// checkIn PWA Service Worker (v4 - WebAPK Icons & WASM Cache)
-const CACHE_NAME = 'checkin-v4';
+// checkIn PWA Service Worker (v5 - WebAPK Icons, WASM Cache & 3s Slow-Network Fallback)
+const CACHE_NAME = 'checkin-v5';
+const NETWORK_TIMEOUT_MS = 3000;
 const STATIC_ASSETS = [
   '/',
   '/logo.svg',
@@ -20,6 +21,21 @@ const STATIC_ASSETS = [
   '/wasm/face_mesh_solution_wasm_bin.js',
   '/wasm/face_mesh_solution_wasm_bin.wasm',
 ];
+
+function fetchWithTimeout(request, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Network timeout')), timeoutMs);
+    fetch(request)
+      .then((response) => {
+        clearTimeout(timer);
+        resolve(response);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -51,11 +67,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Network-first strategy for Next.js build chunks (/_next/) and navigation requests
-  // This ensures new Vercel deployments immediately serve fresh static chunks matching the new build.
+  // 2. Network-first with 3s timeout fallback for Next.js build chunks (/_next/) and navigations
+  // Ensures fresh Vercel deployments when online, and instant cache load on slow/zero-bar campus networks.
   if (url.pathname.startsWith('/_next/') || event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
+      fetchWithTimeout(event.request, NETWORK_TIMEOUT_MS)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET') {
             const responseClone = networkResponse.clone();
@@ -69,6 +85,7 @@ self.addEventListener('fetch', (event) => {
             if (event.request.mode === 'navigate') {
               return caches.match('/');
             }
+            return fetch(event.request);
           });
         })
     );

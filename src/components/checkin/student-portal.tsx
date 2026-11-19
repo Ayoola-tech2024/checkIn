@@ -485,20 +485,58 @@ function ActivePortal() {
   const [statsLoading, setStatsLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Hydrate cached sessions & stats immediately for instant offline / slow-network rendering
+  useEffect(() => {
+    if (!user?.id || typeof window === 'undefined') return;
+    try {
+      const cachedSessions = window.localStorage.getItem(`checkin-sessions-cache:${user.id}`);
+      if (cachedSessions) {
+        const parsed = JSON.parse(cachedSessions) as SessionWithAttendance[];
+        if (Array.isArray(parsed)) {
+          setSessions(parsed);
+          setLoading(false);
+        }
+      }
+      const cachedStats = window.localStorage.getItem(`checkin-stats-cache:${user.id}`);
+      if (cachedStats) {
+        const parsedStats = JSON.parse(cachedStats) as StudentStats;
+        if (parsedStats && typeof parsedStats === 'object') {
+          setStats(parsedStats);
+          setStatsLoading(false);
+        }
+      }
+    } catch {
+      // Ignore corrupt local cache
+    }
+  }, [user?.id]);
+
   // Fetch sessions
   const fetchSessions = useCallback(async () => {
     if (!user?.id) return;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
     try {
-      const response = await fetch(`/api/student/sessions?studentId=${user.id}`);
+      const response = await fetch(`/api/student/sessions?studentId=${user.id}`, {
+        signal: controller.signal,
+      });
       const result: ApiResponse<SessionWithAttendance[]> = await response.json();
 
       if (result.success && result.data) {
         setSessions(result.data);
+        try {
+          window.localStorage.setItem(
+            `checkin-sessions-cache:${user.id}`,
+            JSON.stringify(result.data)
+          );
+        } catch {
+          // Ignore storage quota errors
+        }
       }
     } catch {
-      // Silently fail for polling - don't spam errors
+      // Silently fail for polling / offline mode — cached sessions remain visible
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   }, [user?.id]);
@@ -507,16 +545,29 @@ function ActivePortal() {
   const fetchStats = useCallback(async () => {
     if (!user?.id) return;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
     try {
-      const response = await fetch(`/api/student/stats?studentId=${user.id}`);
+      const response = await fetch(`/api/student/stats?studentId=${user.id}`, {
+        signal: controller.signal,
+      });
       const result: ApiResponse<StudentStats> = await response.json();
 
       if (result.success && result.data) {
         setStats(result.data);
+        try {
+          window.localStorage.setItem(
+            `checkin-stats-cache:${user.id}`,
+            JSON.stringify(result.data)
+          );
+        } catch {
+          // Ignore storage quota errors
+        }
       }
     } catch {
-      // Silently fail - stats are not critical
+      // Silently fail - stats are not critical, cached stats remain visible
     } finally {
+      clearTimeout(timeoutId);
       setStatsLoading(false);
     }
   }, [user?.id]);
@@ -627,9 +678,17 @@ function ActivePortal() {
   );
 
   const handleLogout = useCallback(async () => {
+    if (user?.id && typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(`checkin-sessions-cache:${user.id}`);
+        window.localStorage.removeItem(`checkin-stats-cache:${user.id}`);
+      } catch {
+        // Ignore storage errors
+      }
+    }
     await logout();
     toast.info('Logged out successfully');
-  }, [logout]);
+  }, [logout, user?.id]);
 
   const handlePrintAttendanceStatement = useCallback(() => {
     if (!user || !stats) return;
