@@ -1,28 +1,28 @@
-  checkIn — Student Attendance Platform
+# checkIn — Student Attendance Platform
 
-A production-grade university attendance system with **biometric face verification** (Google MediaPipe FaceMesh) and **GPS geolocation validation**. Built for the School of Logistics and Innovation Technology (SLIT) at the Federal University of Technology, Akure (FUTA).
+A university attendance web application with **client-side 468-landmark facial geometry verification** (Google MediaPipe FaceMesh), **Haversine GPS geofencing**, and **offline IndexedDB sync**. Built for the School of Logistics and Innovation Technology (SLIT) at the Federal University of Technology, Akure (FUTA).
 
-   Features
+## Features
 
-     Role-Based Access Control (4 Roles)
+### Role-Based Access Control (4 Roles)
 - **Admin** — Creates students, faculties (schools), departments, and assigns HODs
 - **HOD (Head of Department)** — Creates lecturers and assigns them to courses and levels within their department
 - **Lecturer** — Creates sessions, starts attendance with GPS, reviews pending check-ins, exports data
 - **Student** — Activates account with face capture, checks in to active sessions
 
-     Biometric Verification
-- **Google MediaPipe FaceMesh** (468 3D landmarks) — replaces face-api.js
-- Three-way similarity routing:
+### Client-Side Facial Geometry Verification
+- **Google MediaPipe FaceMesh** (468 3D facial landmarks extracted client-side via WebAssembly)
+- Three-way geometric similarity routing:
   - **> 50%** → Present (verified)
   - **40–50%** → Pending Review (lecturer approves/rejects)
-  - **< 40%** → Rejected (identity fraud)
+  - **< 40%** → Rejected (mismatch)
 
-     GPS Validation
+### GPS Validation
 - **Haversine formula** calculates distance between student and lecturer/venue
 - Configurable distance threshold per session (default: 50m)
 - Real validation — no demo/sandbox bypasses
 
-     University Hierarchy
+### University Hierarchy
 ```
 Faculty (School) → Department → Level (100–500) → Course
                                               → Student
@@ -39,7 +39,7 @@ Faculty (School) → Department → Level (100–500) → Course
 | PRMT | Procurement Management Technology |
 | SIMT | Securities and Investment Management Technology |
 
-   Tech Stack
+## Tech Stack
 
 - **Framework**: Next.js 16 (App Router) + TypeScript 5
 - **Styling**: Tailwind CSS 4 + shadcn/ui (New York) + Lucide icons
@@ -47,7 +47,7 @@ Faculty (School) → Department → Level (100–500) → Course
 - **Charts**: Recharts
 - **Database**: PostgreSQL via InsForge (PostgREST API)
 - **Auth**: bcrypt password hashing + Zustand persisted sessions
-- **Biometrics**: MediaPipe FaceMesh
+- **Facial Geometry**: MediaPipe FaceMesh (468 3D landmarks) + offline IndexedDB queue
 - **Theming**: next-themes (light/dark mode)
 
 Email:    stackdev@futa.edu.ng
